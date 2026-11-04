@@ -9,3 +9,4 @@ export * from "./demo-parser";
 export * from "./x402";
 export * from "./mailer";
 export * from "./agent-tools";
+export * from "./guards";
