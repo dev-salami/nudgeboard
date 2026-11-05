@@ -1,0 +1,33 @@
+{
+  "name": "paylink-paypal",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PayLink for PayPal: an invoicing and collections agent that creates, sends, and chases PayPal invoices.",
+  "license": "MIT",
+  "scripts": {
+    "dev": "next dev -p 3030 -H 0.0.0.0",
+    "build": "next build",
+    "start": "next start -p 3030",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@181hacks/paylink-core": "workspace:*",
+    "next": "^15.5.6",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.8",
+    "@types/react": "^19.1.16",
+    "@types/react-dom": "^19.1.9",
+    "autoprefixer": "^10.4.21",
+    "eslint": "^9.36.0",
+    "eslint-config-next": "^15.5.6",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

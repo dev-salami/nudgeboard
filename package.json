@@ -5,8 +5,11 @@
   "description": "Hackathon monorepo. PayLink Agent is the Encode Club Solana Hackathon 2026 entry.",
   "scripts": {
     "dev": "pnpm --filter paylink-solana dev",
+    "dev:paypal": "pnpm --filter paylink-paypal dev",
     "build": "pnpm --filter paylink-solana build",
+    "build:paypal": "pnpm --filter paylink-paypal build",
     "start": "pnpm --filter paylink-solana start",
+    "start:paypal": "pnpm --filter paylink-paypal start",
     "lint": "pnpm -r --if-present lint",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",

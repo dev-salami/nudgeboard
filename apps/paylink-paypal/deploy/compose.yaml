@@ -1,0 +1,54 @@
+# PayLink PayPal behind an existing Coolify (Traefik) proxy.
+# Not applied by this change. Host later: paypal.181labs.build
+# Env lives outside git, for example /opt/paypal/secrets.env (mode 600).
+# Build context is the monorepo root (../../.. from this file).
+name: paypal
+services:
+  app:
+    build:
+      context: ../../..
+      dockerfile: apps/paylink-paypal/Dockerfile
+    image: paylink-paypal:${PAYPAL_REVISION:-latest}
+    env_file:
+      - path: ${PAYPAL_ENV_FILE:-/opt/paypal/secrets.env}
+        required: false
+    environment:
+      PORT: "3030"
+      HOSTNAME: 0.0.0.0
+      DATA_DIR: /data
+      APP_URL: https://${PAYPAL_HOST:-paypal.181labs.build}
+    volumes:
+      - paypal-data:/data
+    expose:
+      - "3030"
+    restart: unless-stopped
+    logging: {driver: json-file, options: {max-size: "10m", max-file: "3"}}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3030/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks: [coolify]
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: coolify
+      traefik.http.middlewares.paypal-https.redirectscheme.scheme: https
+      traefik.http.middlewares.paypal-https.redirectscheme.permanent: "true"
+      traefik.http.services.paypal.loadbalancer.server.port: "3030"
+      traefik.http.routers.paypal-http.entrypoints: http
+      traefik.http.routers.paypal-http.middlewares: paypal-https
+      traefik.http.routers.paypal-http.rule: Host(`${PAYPAL_HOST:-paypal.181labs.build}`)
+      traefik.http.routers.paypal-http.service: paypal
+      traefik.http.routers.paypal.entrypoints: https
+      traefik.http.routers.paypal.rule: Host(`${PAYPAL_HOST:-paypal.181labs.build}`)
+      traefik.http.routers.paypal.tls: "true"
+      traefik.http.routers.paypal.tls.certresolver: letsencrypt
+      traefik.http.routers.paypal.service: paypal
+
+volumes:
+  paypal-data:
+
+networks:
+  coolify:
+    external: true
