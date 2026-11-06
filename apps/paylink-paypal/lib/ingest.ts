@@ -20,7 +20,11 @@ export interface InboundMiss {
 export function detectChannel(text: string): "email" | "whatsapp" | null {
   const trimmed = text.trim();
   if (/^from:/im.test(trimmed) || /^subject:/im.test(trimmed)) return "email";
-  if (/^[^:\n]{2,48}:\s+\S/.test(trimmed) && !/^invoice\b/i.test(trimmed)) return "whatsapp";
+  // A colon in a merchant command is not a WhatsApp sender delimiter.
+  // Keep imperative requests on the agent's tool-call path (and preserve drafts).
+  if (/^(?:please\s+)?(?:draft|create|invoice|bill|send|prepare|make|remind|summarize|check)\b/i.test(trimmed)) return null;
+  const sender = trimmed.match(/^([^:\n]{2,48}):\s+\S/)?.[1];
+  if (sender && sender.trim().split(/\s+/).length <= 4) return "whatsapp";
   return null;
 }
 

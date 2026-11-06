@@ -1,4 +1,5 @@
 import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runChat } from "./agent";
@@ -6,7 +7,7 @@ import { resetPaypalRail } from "./provider";
 import { blankStore } from "./store";
 
 beforeEach(() => {
-  vi.stubEnv("DATA_DIR", mkdtempSync(path.join("/tmp/opencode", "paypal-agent-test-")));
+  vi.stubEnv("DATA_DIR", mkdtempSync(path.join(tmpdir(), "paypal-agent-test-")));
   resetPaypalRail();
   blankStore();
 });

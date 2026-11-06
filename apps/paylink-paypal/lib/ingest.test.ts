@@ -1,9 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { parseInbound } from "./ingest";
+import { detectChannel, parseInbound } from "./ingest";
 
 const now = new Date("2026-11-05T12:00:00Z");
 
 describe("inbound requests", () => {
+  it.each([
+    "Please draft a bill for Ada: four hundred eighty dollars for her logo, due tomorrow. Her email is ada@example.com.",
+    "Draft for Ada: 480 USD for her logo",
+    "Please invoice Ada: 480 USD for her logo",
+    "Invoice Ada: 480 USD for her logo",
+    "Create an invoice: Ada owes 480 USD",
+  ])("keeps colon-containing merchant commands on the agent path: %s", (message) => {
+    expect(detectChannel(message)).toBeNull();
+  });
+
+  it("still recognizes pasted sender labels and email headers", () => {
+    expect(detectChannel("Ada Lovelace: please draft a bill for 480 USD")).toBe("whatsapp");
+    expect(detectChannel("Ada: hey can you invoice 220 for the homepage")).toBe("whatsapp");
+    expect(detectChannel("From: Ada <ada@example.com>\nSubject: Logo\nPlease draft an invoice.")).toBe("email");
+  });
+
   it("reads an email-style job request", () => {
     const parsed = parseInbound(
       `From: Ada Lovelace <ada@example.com>

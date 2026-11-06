@@ -1,4 +1,5 @@
 import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { completeDemoPayment, findInvoice, issueInvoice, pollSandboxInvoices, remindInvoice, sendExisting, syncInvoice } from "./invoices";
@@ -7,7 +8,7 @@ import { blankStore, getDb } from "./store";
 import { resetPaypalRail } from "./provider";
 
 beforeEach(() => {
-  vi.stubEnv("DATA_DIR", mkdtempSync(path.join("/tmp/opencode", "paypal-sandbox-test-")));
+  vi.stubEnv("DATA_DIR", mkdtempSync(path.join(tmpdir(), "paypal-sandbox-test-")));
   vi.stubEnv("PAYPAL_CLIENT_ID", "fake-sandbox-id");
   vi.stubEnv("PAYPAL_CLIENT_SECRET", "fake-sandbox-secret");
   resetPaypalRail();
