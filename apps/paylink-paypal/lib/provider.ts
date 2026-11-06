@@ -132,7 +132,7 @@ export function classifyPaypalInvoice(remote: PaypalRemoteInvoice, expected: str
         amountOk,
         mintOk: true,
         signature: remote.transactionId,
-        amountReceived: remote.amountPaid ? paypalAmount(remote.amountPaid) : paypalAmount(expected),
+        amountReceived: remote.amountPaid || paypalAmount(expected),
       },
       dueDate,
       now,

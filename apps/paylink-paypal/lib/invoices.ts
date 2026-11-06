@@ -11,7 +11,7 @@ import { appOrigin, paypalMode } from "./env";
 import { sendMail } from "./mail";
 import { formatUsd, paypalAmount } from "./money";
 import { readWebhook } from "./paypal-client";
-import { getPaypalRail, type PaypalIssueFields } from "./provider";
+import { classifyPaypalInvoice, getPaypalRail, type PaypalIssueFields } from "./provider";
 import { getDb, logActivity, updateDb } from "./store";
 import type { PaidVia, PaypalInvoice, PaypalReceipt } from "./types";
 
@@ -48,6 +48,11 @@ export function unpaidInvoices(): PaypalInvoice[] {
 
 export async function issueInvoice(input: IssueInput): Promise<PaypalInvoice> {
   const amount = paypalAmount(input.amount);
+  if (!input.clientName.trim()) throw new Error("A client name is required.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.dueDate) || new Date(`${input.dueDate}T00:00:00Z`).toISOString().slice(0, 10) !== input.dueDate) {
+    throw new Error("Use a valid due date in YYYY-MM-DD format.");
+  }
+  if (input.clientEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.clientEmail.trim())) throw new Error("Use a valid client email address.");
   const now = new Date();
   const origin = input.origin || appOrigin();
   const mode = paypalMode();
@@ -107,6 +112,17 @@ export async function issueInvoice(input: IssueInput): Promise<PaypalInvoice> {
       message: created.description,
       memo: created.dueDate,
       ...fields,
+    });
+    // Persist the remote reference before sending: a failed send can be retried
+    // against the same draft rather than creating a second remote invoice.
+    updateDb((db) => {
+      const invoice = must(db.invoices, created.id);
+      invoice.payment = {
+        provider: "paypal", reference: request.reference, url: request.url,
+        recipient: request.recipient, asset: "USD",
+        network: request.network === "paypal-sandbox" ? "paypal-sandbox" : "paypal-demo",
+        status: "DRAFT",
+      };
     });
     let remoteStatus = "DRAFT";
     let hostedUrl: string | undefined;
@@ -229,10 +245,15 @@ async function issueReplacement(current: PaypalInvoice, origin: string): Promise
 }
 
 export async function remindInvoice(query: string, origin = appOrigin()): Promise<{ invoice: PaypalInvoice; refusal?: string }> {
-  const invoice = findInvoice(query);
+  let invoice = findInvoice(query);
   if (!invoice) throw new Error(query ? `I couldn't find “${query}”.` : "Which invoice should I chase?");
+  if (invoice.payment?.network === "paypal-sandbox") {
+    invoice = await syncInvoice(invoice.id);
+    if (invoice.paymentIssue === "rpc_down") return { invoice, refusal: "PayPal status could not be verified. No reminder was sent; try again after syncing." };
+  }
   const refusal = reminderRefusal(invoice);
   if (refusal) return { invoice, refusal };
+  if (["CANCELLED", "REFUNDED"].includes(invoice.paypalStatus || "")) return { invoice, refusal: "This PayPal invoice was cancelled or refunded. No reminder was sent." };
 
   const link = payPath(invoice.id, origin);
   const note = `${invoice.clientName}, ${invoice.number} for ${formatUsd(invoice.amount)} USD (${invoice.description}) is still open. Pay here: ${link}`;
@@ -294,14 +315,37 @@ export async function syncInvoice(id: string): Promise<PaypalInvoice> {
   const current = findInvoice(id);
   if (!current) throw new Error("That invoice is gone.");
   if (current.status === "paid" || !current.payment?.reference) return current;
-  const result = await getPaypalRail().check({
-    reference: current.payment.reference,
-    amount: current.amount,
-    asset: "USD",
-    recipient: current.payment.recipient,
-    dueDate: current.dueDate,
-  });
-  return applyCheck(current.id, result);
+  if (current.payment.network === "paypal-demo" && paypalMode() !== "demo") return current;
+  if (current.payment.network === "paypal-sandbox" && paypalMode() !== "sandbox") return current;
+  try {
+    const remote = await getPaypalRail().lookup(current.payment.reference);
+    updateDb((db) => {
+      const invoice = must(db.invoices, id);
+      invoice.paypalStatus = remote.status;
+      if (invoice.status === "draft" && remote.status !== "DRAFT") invoice.status = "pending";
+      if (invoice.payment) {
+        invoice.payment.status = remote.status;
+        invoice.payment.hostedUrl = remote.recipientViewUrl || invoice.payment.hostedUrl;
+      }
+    });
+    // A draft cannot become overdue merely because its proposed due date passed.
+    if (current.status === "draft" && remote.status === "DRAFT") return current;
+    return applyCheck(current.id, classifyPaypalInvoice(remote, current.amount, current.dueDate, new Date()));
+  } catch (error) {
+    return applyCheck(current.id, { status: "pending", issue: "rpc_down", message: error instanceof Error ? error.message : "PayPal could not be reached." });
+  }
+}
+
+const pollTimes = new Map<string, number>();
+/** Dashboard reads are rate-limited; oldest checks first to avoid starving rows. */
+export async function pollSandboxInvoices(): Promise<void> {
+  if (paypalMode() !== "sandbox") return;
+  const rows = getDb().invoices.filter((row) => row.payment?.network === "paypal-sandbox" && row.status !== "paid")
+    .sort((a, b) => (pollTimes.get(a.id) ?? 0) - (pollTimes.get(b.id) ?? 0));
+  await Promise.all(rows.filter((row) => Date.now() - (pollTimes.get(row.id) ?? 0) >= 15_000).slice(0, 5).map(async (row) => {
+    pollTimes.set(row.id, Date.now());
+    await syncInvoice(row.id);
+  }));
 }
 
 export function completeDemoPayment(id: string, via: PaidVia = "paypal"): PaypalInvoice {
@@ -372,6 +416,10 @@ export function totals() {
 function applyCheck(id: string, result: PaymentCheckResult): PaypalInvoice {
   return updateDb((db) => {
     const invoice = must(db.invoices, id);
+    if (!result.issue) {
+      invoice.paymentIssue = null;
+      invoice.paymentIssueDetail = undefined;
+    }
     if (result.status === "paid") {
       return markPaid(db, id, { transactionId: result.signature, amount: result.amountReceived || invoice.amount, via: invoice.paidVia ?? "paypal" });
     }

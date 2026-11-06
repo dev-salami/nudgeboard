@@ -2,7 +2,7 @@
 
 import { formatLongDate } from "@181hacks/paylink-core";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Money } from "./keel";
 import type { PaidVia, PaypalInvoice } from "@/lib/types";
 
@@ -18,6 +18,24 @@ export function PayFlow({ invoice: initial, merchantName }: { invoice: PaypalInv
   const sandbox = invoice.payment?.network === "paypal-sandbox";
   const paid = invoice.status === "paid";
 
+  useEffect(() => {
+    if (!sandbox || paid || initial.status === "draft") return;
+    let active = true;
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/invoices/${initial.id}`);
+        if (!response.ok) return;
+        const data = await response.json() as { invoice?: PaypalInvoice };
+        if (!active || !data.invoice) return;
+        setInvoice(data.invoice);
+        if (data.invoice.receiptId) router.replace(`/receipts/${data.invoice.receiptId}`);
+      } catch { /* Manual check remains available after a connection failure. */ }
+    };
+    const timer = setInterval(() => { void poll(); }, 15_000);
+    void poll();
+    return () => { active = false; clearInterval(timer); };
+  }, [initial.id, initial.status, sandbox, paid, router]);
+
   async function pay() {
     setError("");
     setBusy(true);
@@ -26,6 +44,7 @@ export function PayFlow({ invoice: initial, merchantName }: { invoice: PaypalInv
         window.location.href = invoice.payment.hostedUrl;
         return;
       }
+      if (sandbox) throw new Error("PayPal's payer link is not available yet. Check PayPal and try again.");
       const response = await fetch(`/api/invoices/${invoice.id}/pay`, {
         method: "POST",
         headers: { "content-type": "application/json" },

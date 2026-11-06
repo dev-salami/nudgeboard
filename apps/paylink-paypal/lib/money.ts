@@ -19,8 +19,8 @@ export function formatUsd(amount: string | number): string {
 }
 
 export function compareUsd(left: string, right: string): -1 | 0 | 1 {
-  const a = toAtomic(paypalAmount(left), 2);
-  const b = toAtomic(paypalAmount(right), 2);
+  const a = toAtomic(left, 2);
+  const b = toAtomic(right, 2);
   if (a < b) return -1;
   if (a > b) return 1;
   return 0;

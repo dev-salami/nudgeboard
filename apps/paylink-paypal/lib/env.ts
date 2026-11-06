@@ -14,12 +14,16 @@ export function paypalMode(): PaypalMode {
   return paypalConfigured() ? "sandbox" : "demo";
 }
 
-export function paypalEnvironment(): "sandbox" | "live" {
-  return env("PAYPAL_ENVIRONMENT") === "live" ? "live" : "sandbox";
+export function paypalEnvironment(): "sandbox" {
+  if (env("PAYPAL_ENVIRONMENT", "sandbox") !== "sandbox") {
+    throw new Error("Only PayPal sandbox is supported. Set PAYPAL_ENVIRONMENT=sandbox.");
+  }
+  return "sandbox";
 }
 
 export function paypalApiBase(): string {
-  return paypalEnvironment() === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com";
+  paypalEnvironment();
+  return "https://api-m.sandbox.paypal.com";
 }
 
 export function appOrigin(request?: Request): string {

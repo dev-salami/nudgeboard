@@ -116,16 +116,26 @@ function createDemoClient(): PaypalTransport {
 function createSandboxClient(options: PaypalClientOptions): PaypalTransport {
   const fetchImpl = options.fetchImpl ?? fetch;
   const apiBase = (options.apiBase ?? "https://api-m.sandbox.paypal.com").replace(/\/$/, "");
+  if (apiBase !== "https://api-m.sandbox.paypal.com") throw new Error("Only the PayPal sandbox API host is allowed.");
   const clientId = options.clientId ?? "";
   const clientSecret = options.clientSecret ?? "";
   const webhookId = options.webhookId ?? "";
   let cache: { token: string; expiresAt: number } | null = null;
+  let pendingToken: Promise<string> | null = null;
 
   async function token(): Promise<string> {
     if (cache && cache.expiresAt > Date.now() + 15_000) return cache.token;
+    if (!pendingToken) pendingToken = fetchToken().finally(() => { pendingToken = null; });
+    return pendingToken;
+  }
+
+  async function fetchToken(): Promise<string> {
+    if (!clientId || !clientSecret) throw new Error("PayPal sandbox requires both REST credentials.");
     const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
     const response = await fetchImpl(`${apiBase}/v1/oauth2/token`, {
       method: "POST",
+      redirect: "error",
+      signal: AbortSignal.timeout(15_000),
       headers: {
         Authorization: `Basic ${basic}`,
         "Content-Type": "application/x-www-form-urlencoded",
@@ -133,21 +143,25 @@ function createSandboxClient(options: PaypalClientOptions): PaypalTransport {
       body: "grant_type=client_credentials",
     });
     const json = (await response.json().catch(() => ({}))) as { access_token?: string; expires_in?: number; error_description?: string };
-    if (!response.ok || !json.access_token) {
+    if (!response.ok || !json.access_token || !Number.isFinite(json.expires_in) || Number(json.expires_in) <= 0) {
       throw new Error(json.error_description || `PayPal OAuth failed (${response.status}).`);
     }
     cache = { token: json.access_token, expiresAt: Date.now() + (json.expires_in ?? 300) * 1000 };
     return json.access_token;
   }
 
-  async function call(path: string, init: RequestInit = {}): Promise<{ status: number; json: unknown }> {
+  async function call(path: string, init: RequestInit = {}, retry = true): Promise<{ status: number; json: unknown }> {
     const access = await token();
     const headers = new Headers(init.headers);
     headers.set("Authorization", `Bearer ${access}`);
     if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-    const response = await fetchImpl(`${apiBase}${path}`, { ...init, headers });
+    const response = await fetchImpl(`${apiBase}${path}`, { ...init, headers, redirect: "error", signal: AbortSignal.timeout(15_000) });
     const text = await response.text();
     const json = text ? safeJson(text) : {};
+    if (response.status === 401 && retry) {
+      if (cache?.token === access) cache = null;
+      return call(path, init, false);
+    }
     if (!response.ok) throw new Error(paypalError(json, response.status));
     return { status: response.status, json };
   }
@@ -157,7 +171,7 @@ function createSandboxClient(options: PaypalClientOptions): PaypalTransport {
     async createDraft(input) {
       const { json } = await call("/v2/invoicing/invoices", {
         method: "POST",
-        headers: { Prefer: "return=representation" },
+        headers: { Prefer: "return=representation", "PayPal-Request-Id": `draft-${input.localId}` },
         body: JSON.stringify(buildDraftBody(input)),
       });
       return readInvoice(json);
@@ -165,7 +179,7 @@ function createSandboxClient(options: PaypalClientOptions): PaypalTransport {
     async send(id, note) {
       await call(`/v2/invoicing/invoices/${encodeURIComponent(id)}/send`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "PayPal-Request-Id": `send-${id}` },
         body: JSON.stringify({
           send_to_recipient: true,
           send_to_invoicer: false,
@@ -197,11 +211,9 @@ function createSandboxClient(options: PaypalClientOptions): PaypalTransport {
       if (!headers.transmissionId || !headers.transmissionSig || !headers.transmissionTime || !headers.certUrl || !headers.authAlgo) {
         return { ok: false, reason: "PayPal transmission headers are missing." };
       }
-      const access = await token();
-      const response = await fetchImpl(`${apiBase}/v1/notifications/verify-webhook-signature`, {
+      const { json } = await call("/v1/notifications/verify-webhook-signature", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${access}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -214,9 +226,7 @@ function createSandboxClient(options: PaypalClientOptions): PaypalTransport {
           webhook_event: event,
         }),
       });
-      const json = (await response.json().catch(() => ({}))) as { verification_status?: string };
-      if (!response.ok) return { ok: false, reason: `PayPal webhook verification failed (${response.status}).` };
-      if (json.verification_status !== "SUCCESS") return { ok: false, reason: "PayPal rejected the webhook signature." };
+      if (asRecord(json).verification_status !== "SUCCESS") return { ok: false, reason: "PayPal rejected the webhook signature." };
       return { ok: true, reason: "PayPal verified the webhook signature." };
     },
   };
@@ -270,15 +280,24 @@ export function readInvoice(json: unknown): PaypalRemoteInvoice {
   const payments = asRecord(record.payments);
   const transactions = Array.isArray(payments.transactions) ? payments.transactions : [];
   const paid = transactions.map(asRecord).find((item) => stringField(item, "transaction_id"));
-  const paidAmount = asRecord(paid?.amount);
+  const paidAmount = asRecord(payments.paid_amount ?? paid?.amount);
   return {
     id,
     status: stringField(record, "status") || "DRAFT",
-    recipientViewUrl: stringField(metadata, "recipient_view_url") || undefined,
-    invoicerViewUrl: stringField(metadata, "invoicer_view_url") || undefined,
+    recipientViewUrl: sandboxViewUrl(stringField(metadata, "recipient_view_url")),
+    invoicerViewUrl: sandboxViewUrl(stringField(metadata, "invoicer_view_url")),
     transactionId: paid ? stringField(paid, "transaction_id") || undefined : undefined,
     amountPaid: stringField(paidAmount, "value") || undefined,
   };
+}
+
+function sandboxViewUrl(value: string): string | undefined {
+  if (!value) return undefined;
+  const url = new URL(value);
+  if (url.protocol !== "https:" || url.hostname !== "www.sandbox.paypal.com" || url.port || url.username || url.password) {
+    throw new Error("PayPal returned a non-sandbox invoice link.");
+  }
+  return value;
 }
 
 export function readWebhook(event: unknown): { id?: string; eventType: string; invoiceId: string; status?: string; transactionId?: string; amount?: string } | null {
@@ -325,8 +344,7 @@ function publicView(record: DemoRecord): PaypalRemoteInvoice {
 }
 
 function idFromLinks(record: Record<string, unknown>): string {
-  const href = asRecord(record.href);
-  const direct = stringField(href, "href");
+  const direct = stringField(record, "href");
   const links = Array.isArray(record.links) ? record.links.map(asRecord) : [];
   const self = links.find((link) => stringField(link, "rel") === "self");
   const candidate = direct || (self ? stringField(self, "href") : "");

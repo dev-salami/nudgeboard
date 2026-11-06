@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { buildDraftBody, createPaypalClient, readWebhook } from "./paypal-client";
+import { describe, expect, it, vi } from "vitest";
+import { buildDraftBody, createPaypalClient, readInvoice, readWebhook } from "./paypal-client";
 
 const draft = {
   invoiceNumber: "PP-2026-1041",
@@ -41,6 +41,78 @@ describe("PayPal demo client", () => {
 });
 
 describe("PayPal sandbox client", () => {
+  it("rejects live/custom hosts before making a request", () => {
+    for (const apiBase of ["https://api-m.paypal.com", "https://example.com", "https://api-m.sandbox.paypal.com@evil.test"]) {
+      expect(() => createPaypalClient({ mode: "sandbox", apiBase })).toThrow(/sandbox/);
+    }
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("shares a cached token, refreshes at expiry, and retries a rejected token once", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-07T00:00:00Z"));
+    let tokens = 0;
+    let reject = false;
+    const fetchImpl = vi.fn<typeof fetch>(async (url, init) => {
+      expect(String(url)).toMatch(/^https:\/\/api-m\.sandbox\.paypal\.com\//);
+      expect(init?.redirect).toBe("error");
+      if (String(url).endsWith("/token")) return Response.json({ access_token: `token-${++tokens}`, expires_in: 60 });
+      if (reject) { reject = false; return Response.json({ message: "Expired token" }, { status: 401 }); }
+      return Response.json({ id: "INV2-CACHE", status: "SENT" });
+    });
+    const client = createPaypalClient({ mode: "sandbox", clientId: "fake-id", clientSecret: "fake-secret", fetchImpl });
+    await Promise.all([client.get("INV2-CACHE"), client.get("INV2-CACHE")]);
+    expect(tokens).toBe(1);
+    vi.setSystemTime(new Date("2026-11-07T00:01:01Z"));
+    await client.get("INV2-CACHE");
+    expect(tokens).toBe(2);
+    reject = true;
+    await client.get("INV2-CACHE");
+    expect(tokens).toBe(3);
+  });
+
+  it("surfaces OAuth, validation, rate-limit, and unavailable errors without demo fallback", async () => {
+    const failedOauth = createPaypalClient({ mode: "sandbox", clientId: "fake", clientSecret: "fake", fetchImpl: async () => Response.json({ error_description: "Invalid sandbox credentials" }, { status: 401 }) });
+    await expect(failedOauth.createDraft(draft)).rejects.toThrow("Invalid sandbox credentials");
+    for (const status of [401, 422, 429, 503]) {
+      const fetchImpl = vi.fn<typeof fetch>(async (url) => String(url).endsWith("/token")
+        ? Response.json({ access_token: "fake-token", expires_in: 300 })
+        : Response.json({ message: "Sandbox failure", details: [{ issue: "TEST_ERROR" }] }, { status }));
+      const client = createPaypalClient({ mode: "sandbox", clientId: "fake", clientSecret: "fake", fetchImpl });
+      await expect(client.createDraft(draft)).rejects.toThrow(/Sandbox failure.*TEST_ERROR/);
+      expect(fetchImpl).toHaveBeenCalledTimes(status === 401 ? 4 : 2);
+    }
+  });
+
+  it("creates a draft, sends it, gets its payer link, then reads payment", async () => {
+    const calls: string[] = [];
+    let paid = false;
+    const fetchImpl: typeof fetch = async (url, init) => {
+      calls.push(`${init?.method} ${new URL(String(url)).pathname}`);
+      if (String(url).endsWith("/token")) return Response.json({ access_token: "fake", expires_in: 300 });
+      if (String(url).endsWith("/invoices")) {
+        expect(new Headers(init?.headers).get("PayPal-Request-Id")).toBe("draft-inv_test");
+        expect(JSON.parse(String(init?.body)).detail.payment_term.due_date).toBe(draft.dueDate);
+        return Response.json({ href: "https://api-m.sandbox.paypal.com/v2/invoicing/invoices/INV2-LIFE" }, { status: 201 });
+      }
+      if (String(url).endsWith("/send")) return new Response(null, { status: 202 });
+      return Response.json({ id: "INV2-LIFE", status: paid ? "PAID" : "SENT", detail: { metadata: { recipient_view_url: "https://www.sandbox.paypal.com/invoice/p/#INV2-LIFE" } }, payments: paid ? { paid_amount: { currency_code: "USD", value: "150.00" }, transactions: [{ transaction_id: "TX-LIFE", amount: { value: "50.00" } }] } : undefined });
+    };
+    const client = createPaypalClient({ mode: "sandbox", clientId: "fake", clientSecret: "fake", fetchImpl });
+    const created = await client.createDraft(draft);
+    expect(created.id).toBe("INV2-LIFE");
+    const sent = await client.send(created.id);
+    expect(sent.status).toBe("SENT");
+    expect(sent.recipientViewUrl).toContain("www.sandbox.paypal.com");
+    paid = true;
+    expect(await client.get(created.id)).toMatchObject({ status: "PAID", transactionId: "TX-LIFE", amountPaid: "150.00" });
+    expect(calls).toEqual(["POST /v1/oauth2/token", "POST /v2/invoicing/invoices", "POST /v2/invoicing/invoices/INV2-LIFE/send", "GET /v2/invoicing/invoices/INV2-LIFE", "GET /v2/invoicing/invoices/INV2-LIFE"]);
+  });
+
+  it("rejects non-sandbox payer links", () => {
+    expect(() => readInvoice({ id: "INV2-LIVE", detail: { metadata: { recipient_view_url: "https://www.paypal.com/invoice/p/test" } } })).toThrow(/non-sandbox/);
+  });
+
   it("gets an OAuth token and posts a USD invoice", async () => {
     const calls: { url: string; authorization?: string; body?: string }[] = [];
     const fetchImpl: typeof fetch = async (url, init) => {

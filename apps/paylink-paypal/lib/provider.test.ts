@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CreatePaymentInput, PaymentProvider } from "@181hacks/paylink-core";
 import { createPaypalClient } from "./paypal-client";
-import { createPaypalRail } from "./provider";
+import { classifyPaypalInvoice, createPaypalRail } from "./provider";
 
 function input(amount = "220"): CreatePaymentInput {
   return {
@@ -24,6 +24,18 @@ function input(amount = "220"): CreatePaymentInput {
 }
 
 describe("PayPal PaymentProvider", () => {
+  it("classifies remote payment states, overdue invoices, zero and partial payments", () => {
+    const now = new Date("2026-11-07T12:00:00Z");
+    const classify = (status: string, amountPaid?: string, due = "2026-11-10") => classifyPaypalInvoice({ id: "INV2-STATUS", status, amountPaid }, "100", due, now);
+    expect(classify("SENT").status).toBe("pending");
+    expect(classify("SENT", undefined, "2026-11-01").status).toBe("expired");
+    expect(classify("PAYMENT_PENDING").status).toBe("pending");
+    expect(classify("PARTIALLY_PAID", "20.00")).toMatchObject({ status: "underpaid", amountReceived: "20.00" });
+    expect(classify("PAID", "0.00").status).toBe("underpaid");
+    expect(classify("PAID", "100.00", "2026-11-01").status).toBe("paid");
+    expect(classify("CANCELLED").status).toBe("expired");
+    expect(classify("REFUNDED").status).toBe("expired");
+  });
   it("issues a USD pay link and reports paid after a simulated capture", async () => {
     const client = createPaypalClient({ mode: "demo" });
     const rail = createPaypalRail(client);
