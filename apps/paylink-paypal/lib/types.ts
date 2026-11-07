@@ -78,8 +78,23 @@ export interface Database {
   emails: EmailRecord[];
   inbox: InboundMessage[];
   webhookIds: string[];
+  confirmations: ActionConfirmation[];
   sequence: number;
   seeded: boolean;
+}
+
+export interface ActionConfirmation {
+  id: string;
+  invoiceId: string;
+  action: "send" | "remind";
+  mode: "demo" | "sandbox";
+  snapshot: string;
+  origin: string;
+  createdAt: string;
+  expiresAt: string;
+  state: "pending" | "executing" | "done" | "uncertain" | "cancelled" | "stale";
+  remoteReference?: string;
+  preview: { number: string; clientName: string; clientEmail?: string; amount: string; currency: "USD"; description: string; dueDate: string; message: string };
 }
 
 export type { ActivityEvent, EmailRecord, InvoiceStatus, PaymentIssue };

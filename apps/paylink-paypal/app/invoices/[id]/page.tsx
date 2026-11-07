@@ -37,7 +37,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
           <Row label="PayPal" value={invoice.payment?.reference || "Not created"} />
           <Row label="Network" value={invoice.payment?.network === "paypal-sandbox" ? "Sandbox" : "Demo"} />
         </dl>
-        <InvoiceActions id={invoice.id} status={invoice.status} />
+        <InvoiceActions id={invoice.id} status={invoice.status} initialConfirmation={getDb().confirmations.filter((row) => row.invoiceId === invoice.id && ["pending", "executing", "uncertain"].includes(row.state)).at(-1)} />
         <div className="mt-4 flex flex-wrap gap-2">
           <Link className="btn btn-ghost btn-small" href={`/pay/${invoice.id}`}>Payer page</Link>
           {invoice.receiptId ? <Link className="btn btn-mint btn-small" href={`/receipts/${invoice.receiptId}`}>Receipt</Link> : null}

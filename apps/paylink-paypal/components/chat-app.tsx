@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useState } from "react";
 import { Money } from "./keel";
 import { StatusPill } from "./status-pill";
-import type { PaypalInvoice } from "@/lib/types";
+import type { ActionConfirmation, PaypalInvoice } from "@/lib/types";
+import { ConfirmationPreview } from "./confirmation-preview";
 
 interface ChatReply {
   reply: string;
@@ -13,6 +14,7 @@ interface ChatReply {
   invoice?: PaypalInvoice;
   invoices?: PaypalInvoice[];
   link?: string;
+  confirmation?: ActionConfirmation;
 }
 
 interface Turn {
@@ -31,7 +33,7 @@ export function ChatApp() {
   const [turns, setTurns] = useState<Turn[]>([
     {
       role: "assistant",
-      content: "Tell me who to invoice. I will create the PayPal invoice, send it, and chase it if it sits open.",
+      content: "Tell me who to invoice. I prepare a local draft and preview first. Sending an invoice or reminder always needs a separate explicit confirmation.",
     },
   ]);
   const [text, setText] = useState("");
@@ -73,6 +75,7 @@ export function ChatApp() {
           <div key={`${turn.role}-${index}`} className={`bubble ${turn.role}`}>
             <p className="whitespace-pre-wrap">{turn.content}</p>
             {turn.data?.invoice ? <InvoiceCard invoice={turn.data.invoice} /> : null}
+            {turn.data?.confirmation ? <ConfirmationPreview confirmation={turn.data.confirmation} onInvoice={(invoice) => setTurns((current) => current.map((item, position) => position === index && item.data ? { ...item, data: { ...item.data, invoice } } : item))} /> : null}
             {turn.data?.invoices && turn.data.invoices.length > 1 ? (
               <ul className="mt-3 grid gap-2">
                 {turn.data.invoices.slice(0, 6).map((invoice) => (
@@ -139,9 +142,9 @@ function InvoiceCard({ invoice }: { invoice: PaypalInvoice }) {
       <p className="text-sm text-muted">{invoice.description}</p>
       {invoice.payment?.reference ? <p className="mt-2 text-xs text-muted">PayPal {invoice.payment.reference}</p> : null}
       <div className="mt-3 flex flex-wrap gap-2">
-        <Link href={`/pay/${invoice.id}`} className="btn btn-mint btn-small">
+        {invoice.status !== "draft" ? <Link href={`/pay/${invoice.id}`} className="btn btn-mint btn-small">
           Pay link
-        </Link>
+        </Link> : null}
         <Link href={`/invoices/${invoice.id}`} className="btn btn-ghost btn-small">
           Invoice
         </Link>

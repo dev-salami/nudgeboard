@@ -52,7 +52,7 @@ export function InboxForm() {
         <h2 className="mt-2 text-2xl">Paste a request</h2>
         <textarea className="field mt-4" value={email} onChange={(event) => setEmail(event.target.value)} />
         <button className="btn btn-primary mt-3" type="submit" disabled={busy !== null}>
-          {busy === "email" ? "Reading…" : "Create PayPal invoice"}
+          {busy === "email" ? "Reading…" : "Prepare local invoice draft"}
         </button>
       </form>
       <form
@@ -66,7 +66,7 @@ export function InboxForm() {
         <h2 className="mt-2 text-2xl">Paste a chat</h2>
         <textarea className="field mt-4" value={whatsapp} onChange={(event) => setWhatsapp(event.target.value)} />
         <button className="btn btn-primary mt-3" type="submit" disabled={busy !== null}>
-          {busy === "whatsapp" ? "Reading…" : "Create PayPal invoice"}
+          {busy === "whatsapp" ? "Reading…" : "Prepare local invoice draft"}
         </button>
       </form>
       {note ? (

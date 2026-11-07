@@ -2,7 +2,8 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { applyWebhook, completeDemoPayment, findInvoice, issueInvoice, remindInvoice, unpaidInvoices } from "./invoices";
+import { applyWebhook, completeDemoPayment, findInvoice, issueInvoice, remindInvoice, sendExisting, unpaidInvoices } from "./invoices";
+import { prepareConfirmation } from "./confirmations";
 import { getPaypalRail, resetPaypalRail } from "./provider";
 import { blankStore, getDb } from "./store";
 
@@ -29,6 +30,8 @@ describe("demo collections loop", () => {
       asDraft: false,
       origin: "http://localhost:3030",
     });
+    expect(invoice.status).toBe("draft");
+    await sendExisting(invoice.id, "http://localhost:3030", prepareConfirmation(invoice.id, "send", "http://localhost:3030").id);
     expect(invoice.status).toBe("pending");
     expect(invoice.payment?.network).toBe("paypal-demo");
     expect(invoice.payment?.url).toBe(`http://localhost:3030/pay/${invoice.id}`);
@@ -51,7 +54,8 @@ describe("demo collections loop", () => {
       asDraft: false,
       origin: "http://localhost:3030",
     });
-    const reminded = await remindInvoice("Mina", "http://localhost:3030");
+    await sendExisting(open.id, "http://localhost:3030", prepareConfirmation(open.id, "send", "http://localhost:3030").id);
+    const reminded = await remindInvoice("Mina", "http://localhost:3030", prepareConfirmation(open.id, "remind", "http://localhost:3030").id);
     expect(reminded.refusal).toBeUndefined();
     expect(getDb().emails[0]?.to).toBe("mina@example.com");
     expect(getDb().emails[0]?.text).toContain(open.number);

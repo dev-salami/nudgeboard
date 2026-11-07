@@ -11,9 +11,10 @@ import { appOrigin, paypalMode } from "./env";
 import { sendMail } from "./mail";
 import { formatUsd, paypalAmount } from "./money";
 import { readWebhook } from "./paypal-client";
-import { classifyPaypalInvoice, getPaypalRail, type PaypalIssueFields } from "./provider";
+import { classifyPaypalInvoice, getPaypalRail } from "./provider";
+import { assertEligible, assertUnchanged, executeConfirmed } from "./confirmations";
 import { getDb, logActivity, updateDb } from "./store";
-import type { PaidVia, PaypalInvoice, PaypalReceipt } from "./types";
+import type { ActionConfirmation, PaidVia, PaypalInvoice, PaypalReceipt } from "./types";
 
 export interface IssueInput {
   clientName: string;
@@ -39,7 +40,7 @@ export function findInvoice(query: string, invoices = getDb().invoices): PaypalI
   const byRef = invoices.find((invoice) => invoice.payment?.reference.toLowerCase() === needle);
   if (byRef) return byRef;
   const named = invoices.filter((invoice) => invoice.clientName.toLowerCase() === needle || invoice.clientName.toLowerCase().includes(needle));
-  return named.find((invoice) => invoice.status !== "paid") ?? named[0];
+  return named.length === 1 ? named[0] : undefined;
 }
 
 export function unpaidInvoices(): PaypalInvoice[] {
@@ -53,12 +54,15 @@ export async function issueInvoice(input: IssueInput): Promise<PaypalInvoice> {
     throw new Error("Use a valid due date in YYYY-MM-DD format.");
   }
   if (input.clientEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.clientEmail.trim())) throw new Error("Use a valid client email address.");
-  const now = new Date();
-  const origin = input.origin || appOrigin();
-  const mode = paypalMode();
-  if (!input.asDraft && mode === "sandbox" && !input.clientEmail) {
-    throw new Error("PayPal needs the client's email before the invoice can be sent. I can keep a draft if you include one.");
+  const matches = getDb().invoices.filter((invoice) => invoice.clientName === input.clientName.trim()
+    && invoice.clientEmail === (input.clientEmail?.trim() || undefined) && invoice.amount === amount
+    && invoice.description === tidyDescription(input.description) && invoice.dueDate === input.dueDate);
+  if (matches.some((invoice) => getDb().confirmations.some((row) => row.invoiceId === invoice.id && row.action === "send" && ["executing", "uncertain"].includes(row.state)))) {
+    throw new Error("An identical invoice send may be in progress or uncertain. Review that invoice; do not create a replacement.");
   }
+  const existingDraft = matches.find((invoice) => invoice.status === "draft");
+  if (existingDraft) return existingDraft; // Retried preview cannot create another send token.
+  const now = new Date();
 
   const created = updateDb((db) => {
     db.sequence += 1;
@@ -88,90 +92,24 @@ export async function issueInvoice(input: IssueInput): Promise<PaypalInvoice> {
     return invoice;
   });
 
-  const merchant = getDb().merchant;
-  const fields: PaypalIssueFields = {
-    invoiceNumber: created.number,
-    clientName: created.clientName,
-    clientEmail: created.clientEmail,
-    description: created.description,
-    dueDate: created.dueDate,
-    invoiceDate: isoDate(now),
-    merchantName: merchant.name,
-    merchantEmail: merchant.email || "merchant@example.com",
-    payUrl: payPath(created.id, origin),
-    note: `PayLink ${created.number}`,
-  };
-
-  try {
-    const rail = getPaypalRail();
-    const request = await rail.createRequest({
-      invoiceId: created.id,
-      amount: created.amount,
-      currency: "USDC",
-      label: created.number,
-      message: created.description,
-      memo: created.dueDate,
-      ...fields,
-    });
-    // Persist the remote reference before sending: a failed send can be retried
-    // against the same draft rather than creating a second remote invoice.
-    updateDb((db) => {
-      const invoice = must(db.invoices, created.id);
-      invoice.payment = {
-        provider: "paypal", reference: request.reference, url: request.url,
-        recipient: request.recipient, asset: "USD",
-        network: request.network === "paypal-sandbox" ? "paypal-sandbox" : "paypal-demo",
-        status: "DRAFT",
-      };
-    });
-    let remoteStatus = "DRAFT";
-    let hostedUrl: string | undefined;
-    if (!input.asDraft) {
-      const sent = await rail.deliver(request.reference, `Invoice ${created.number} for ${created.description}.`);
-      remoteStatus = sent.status || "SENT";
-      hostedUrl = sent.recipientViewUrl;
-    } else {
-      const looked = await rail.lookup(request.reference).catch(() => undefined);
-      hostedUrl = looked?.recipientViewUrl;
-      remoteStatus = looked?.status || "DRAFT";
-    }
-    return updateDb((db) => {
-      const invoice = must(db.invoices, created.id);
-      invoice.payment = {
-        provider: "paypal",
-        reference: request.reference,
-        url: request.url || payPath(invoice.id, origin),
-        hostedUrl,
-        recipient: request.recipient,
-        asset: "USD",
-        network: request.network === "paypal-sandbox" ? "paypal-sandbox" : "paypal-demo",
-        status: remoteStatus,
-      };
-      invoice.paypalStatus = remoteStatus;
-      invoice.status = input.asDraft ? "draft" : "pending";
-      invoice.updatedAt = new Date().toISOString();
-      if (!input.asDraft) {
-        logActivity(db, {
-          kind: "invoice_issued",
-          title: `Sent ${invoice.number} to ${invoice.clientName}`,
-          detail: `${invoice.payment.reference} · ${formatUsd(invoice.amount)} USD`,
-          invoiceId: invoice.id,
-          href: `/pay/${invoice.id}`,
-        });
-      }
-      return invoice;
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "PayPal did not accept the invoice.";
-    updateDb((db) => {
-      const invoice = db.invoices.find((item) => item.id === created.id);
-      if (invoice) invoice.paymentIssueDetail = message;
-    });
-    throw new Error(message);
-  }
+  // Even legacy callers with asDraft:false cannot create or send remotely.
+  // Only sendExisting with a persisted explicit confirmation may dispatch.
+  return created;
 }
 
-export async function sendExisting(id: string, origin = appOrigin()): Promise<PaypalInvoice> {
+export async function sendExisting(id: string, origin = appOrigin(), confirmationId?: string): Promise<PaypalInvoice> {
+  return executeConfirmed(confirmationId, id, "send", origin, async (record) => {
+    const invoice = must(getDb().invoices, id);
+    if (invoice.payment?.network === "paypal-sandbox") {
+      await syncInvoice(id);
+      if (invoice.paymentIssue === "rpc_down") throw new Error("PayPal status could not be verified.");
+    }
+    assertUnchanged(record, invoice);
+    return dispatchExisting(id, origin, record);
+  });
+}
+
+async function dispatchExisting(id: string, origin: string, record: ActionConfirmation): Promise<PaypalInvoice> {
   const current = findInvoice(id);
   if (!current) throw new Error("That invoice is gone.");
   if (current.status !== "draft") throw new Error(`${current.number} is already ${current.status}.`);
@@ -180,13 +118,14 @@ export async function sendExisting(id: string, origin = appOrigin()): Promise<Pa
   }
   const rail = getPaypalRail();
   if (!current.payment?.reference) {
-    return issueReplacement(current, origin);
+    return issueReplacement(current, origin, record);
   }
-  const sent = await rail.deliver(current.payment.reference, `Invoice ${current.number} for ${current.description}.`);
+  const sent = await rail.deliver(current.payment.reference, record.preview.message);
   return updateDb((db) => {
     const invoice = must(db.invoices, current.id);
+    if (invoice.status !== "draft") throw new Error("Invoice state changed during send; review PayPal.");
     invoice.status = "pending";
-    invoice.paypalStatus = sent.status || "SENT";
+    invoice.paypalStatus = "SENT";
     if (invoice.payment) {
       invoice.payment.status = invoice.paypalStatus;
       invoice.payment.hostedUrl = sent.recipientViewUrl || invoice.payment.hostedUrl;
@@ -204,7 +143,7 @@ export async function sendExisting(id: string, origin = appOrigin()): Promise<Pa
   });
 }
 
-async function issueReplacement(current: PaypalInvoice, origin: string): Promise<PaypalInvoice> {
+async function issueReplacement(current: PaypalInvoice, origin: string, record: ActionConfirmation): Promise<PaypalInvoice> {
   const merchant = getDb().merchant;
   const rail = getPaypalRail();
   const request = await rail.createRequest({
@@ -224,11 +163,22 @@ async function issueReplacement(current: PaypalInvoice, origin: string): Promise
     merchantEmail: merchant.email || "merchant@example.com",
     payUrl: payPath(current.id, origin),
   } as CreatePaymentInput);
-  const sent = await rail.deliver(request.reference);
+  updateDb(() => { record.remoteReference = request.reference; });
+  // Re-check after the awaited remote creation, before sending. A failure leaves
+  // the durable reservation blocked; never silently create a replacement.
+  assertUnchanged(record, current);
+  // Persist a remotely created draft before sending, including on interruption.
+  updateDb(() => {
+    current.payment = { provider: "paypal", reference: request.reference, url: payPath(current.id, origin), recipient: request.recipient, asset: "USD",
+      network: request.network === "paypal-sandbox" ? "paypal-sandbox" : "paypal-demo", status: "DRAFT" };
+  });
+  assertEligible(current, "send");
+  const sent = await rail.deliver(request.reference, record.preview.message);
   return updateDb((db) => {
     const invoice = must(db.invoices, current.id);
+    if (invoice.status !== "draft") throw new Error("Invoice state changed during send; review PayPal.");
     invoice.status = "pending";
-    invoice.paypalStatus = sent.status || "SENT";
+    invoice.paypalStatus = "SENT";
     invoice.payment = {
       provider: "paypal",
       reference: request.reference,
@@ -240,23 +190,33 @@ async function issueReplacement(current: PaypalInvoice, origin: string): Promise
       status: invoice.paypalStatus,
     };
     invoice.updatedAt = new Date().toISOString();
+    logActivity(db, { kind: "invoice_issued", title: `Sent ${invoice.number} to ${invoice.clientName}`, detail: request.reference, invoiceId: invoice.id, href: `/pay/${invoice.id}` });
     return invoice;
   });
 }
 
-export async function remindInvoice(query: string, origin = appOrigin()): Promise<{ invoice: PaypalInvoice; refusal?: string }> {
-  let invoice = findInvoice(query);
+export async function remindInvoice(query: string, origin = appOrigin(), confirmationId?: string): Promise<{ invoice: PaypalInvoice; refusal?: string }> {
+  const invoice = findInvoice(query);
+  if (!invoice) throw new Error("Choose a unique invoice number before preparing a reminder.");
+  const refusal = reminderRefusal(invoice);
+  if (refusal) return { invoice, refusal };
+  return executeConfirmed(confirmationId, invoice.id, "remind", origin, async (record) => {
+    if (invoice.payment?.network === "paypal-sandbox") await syncInvoice(invoice.id);
+    if (invoice.paymentIssue === "rpc_down") throw new Error("PayPal status could not be verified.");
+    assertUnchanged(record, invoice);
+    return dispatchReminder(invoice.id, origin, record.preview.message);
+  });
+}
+
+async function dispatchReminder(query: string, origin: string, note: string): Promise<{ invoice: PaypalInvoice; refusal?: string }> {
+  const invoice = findInvoice(query);
   if (!invoice) throw new Error(query ? `I couldn't find “${query}”.` : "Which invoice should I chase?");
-  if (invoice.payment?.network === "paypal-sandbox") {
-    invoice = await syncInvoice(invoice.id);
-    if (invoice.paymentIssue === "rpc_down") return { invoice, refusal: "PayPal status could not be verified. No reminder was sent; try again after syncing." };
-  }
+  assertEligible(invoice, "remind");
   const refusal = reminderRefusal(invoice);
   if (refusal) return { invoice, refusal };
   if (["CANCELLED", "REFUNDED"].includes(invoice.paypalStatus || "")) return { invoice, refusal: "This PayPal invoice was cancelled or refunded. No reminder was sent." };
 
   const link = payPath(invoice.id, origin);
-  const note = `${invoice.clientName}, ${invoice.number} for ${formatUsd(invoice.amount)} USD (${invoice.description}) is still open. Pay here: ${link}`;
   if (invoice.payment?.reference) {
     try {
       await getPaypalRail().chase(invoice.payment.reference, note);
@@ -266,7 +226,8 @@ export async function remindInvoice(query: string, origin = appOrigin()): Promis
     }
   }
 
-  if (invoice.clientEmail) {
+  // Sandbox uses PayPal's single reminder channel; do not also send SMTP mail.
+  if (invoice.clientEmail && invoice.payment?.network !== "paypal-sandbox") {
     await sendMail({
       to: invoice.clientEmail,
       subject: `Reminder: ${invoice.number} is still open`,
@@ -283,6 +244,8 @@ export async function remindInvoice(query: string, origin = appOrigin()): Promis
         href: `/invoices/${invoice.id}`,
       });
     });
+  } else if (invoice.payment?.network === "paypal-sandbox") {
+    updateDb((db) => { logActivity(db, { kind: "note", title: `PayPal sandbox reminder accepted for ${invoice.number}`, detail: "PayPal delivery only; no additional email sent.", invoiceId: invoice.id }); });
   } else {
     updateDb((db) => {
       logActivity(db, {
@@ -297,18 +260,8 @@ export async function remindInvoice(query: string, origin = appOrigin()): Promis
 }
 
 export async function chaseUnpaid(origin = appOrigin()): Promise<{ reminded: PaypalInvoice[]; skipped: string[] }> {
-  const reminded: PaypalInvoice[] = [];
-  const skipped: string[] = [];
-  for (const invoice of unpaidInvoices()) {
-    if (invoice.status === "draft") {
-      skipped.push(`${invoice.number} is still a draft.`);
-      continue;
-    }
-    const result = await remindInvoice(invoice.id, origin);
-    if (result.refusal) skipped.push(result.refusal);
-    else reminded.push(result.invoice);
-  }
-  return { reminded, skipped };
+  void origin;
+  throw new Error("Bulk sends are disabled. Preview and confirm one exact invoice at a time.");
 }
 
 export async function syncInvoice(id: string): Promise<PaypalInvoice> {

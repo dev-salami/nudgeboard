@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, renameSync, openSync, closeSync, fsyncSync } from "node:fs";
 import path from "node:path";
 import { addDays, createId, isoDate, type ActivityEvent } from "@181hacks/paylink-core";
 import { dataDir, merchantProfile } from "./env";
@@ -24,6 +24,7 @@ function emptyDb(): Database {
     emails: [],
     inbox: [],
     webhookIds: [],
+    confirmations: [],
     sequence: 1040,
     seeded: false,
   };
@@ -32,21 +33,30 @@ function emptyDb(): Database {
 function readFromDisk(): Database {
   try {
     const parsed = JSON.parse(readFileSync(dbPath(), "utf8")) as Database;
-    if (parsed.version !== 1 || !Array.isArray(parsed.invoices)) return emptyDb();
+    if (parsed.version !== 1 || !Array.isArray(parsed.invoices)) throw new Error("Invalid PayPal store; restore it before sending.");
     parsed.inbox ??= [];
     parsed.webhookIds ??= [];
     parsed.emails ??= [];
     parsed.receipts ??= [];
     parsed.activities ??= [];
+    parsed.confirmations ??= [];
+    if (!Array.isArray(parsed.confirmations)) throw new Error("Invalid confirmation store; restore it before sending.");
     return parsed;
-  } catch {
-    return emptyDb();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return emptyDb();
+    throw error; // Never erase dispatch reservations after corruption/read failure.
   }
 }
 
 function writeToDisk(db: Database): void {
   mkdirSync(directory(), { recursive: true });
-  writeFileSync(dbPath(), JSON.stringify(db, null, 2));
+  const temporary = `${dbPath()}.tmp`;
+  const file = openSync(temporary, "w", 0o600);
+  try { writeFileSync(file, JSON.stringify(db, null, 2)); fsyncSync(file); }
+  finally { closeSync(file); }
+  renameSync(temporary, dbPath());
+  const folder = openSync(directory(), "r");
+  try { fsyncSync(folder); } finally { closeSync(folder); }
 }
 
 export function getDb(): Database {

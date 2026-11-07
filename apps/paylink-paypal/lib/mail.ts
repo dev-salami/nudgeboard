@@ -1,5 +1,4 @@
-import { createConsoleMailer, createResendMailer, type Mailer, type OutboundEmail } from "@181hacks/paylink-core";
-import { env } from "./env";
+import { createConsoleMailer, type Mailer, type OutboundEmail } from "@181hacks/paylink-core";
 import { updateDb } from "./store";
 
 export function sendMail(email: OutboundEmail & { invoiceId?: string }): Promise<{ provider: string; id: string }> {
@@ -23,7 +22,7 @@ export function sendMail(email: OutboundEmail & { invoiceId?: string }): Promise
 }
 
 function pickMailer(): Mailer {
-  const key = env("RESEND_API_KEY");
-  if (key) return createResendMailer({ apiKey: key, from: env("RESEND_FROM", "PayLink <invoices@example.com>") });
+  // Demo reminders are local records only, even if mail credentials exist.
+  // Sandbox reminders use PayPal alone; this app never adds a second email send.
   return createConsoleMailer(() => undefined);
 }
