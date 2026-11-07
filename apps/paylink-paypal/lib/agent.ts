@@ -8,6 +8,7 @@ import {
 } from "@181hacks/paylink-core";
 import { findInvoice, issueInvoice, unpaidInvoices, syncInvoice, pollSandboxInvoices } from "./invoices";
 import { detectChannel, parseInbound } from "./ingest";
+import { receivablesSummary } from "./ai";
 import { prepareConfirmation } from "./confirmations";
 import { demoMode, env, paypalMode } from "./env";
 import { formatUsd } from "./money";
@@ -95,7 +96,7 @@ export async function runChat(request: ChatRequest, origin: string): Promise<Cha
   if (/\b(summary|summarize|receivables|overview)\b/.test(lower)) {
     await pollSandboxInvoices();
     const invoices = unpaidInvoices();
-    return { mode: agentMode(), paypal, invoices, reply: `${invoices.length} open local invoices (including drafts). Payment status comes only from the ledger and PayPal verification.` };
+    return { mode: agentMode(), paypal, invoices, reply: await receivablesSummary(invoices) };
   }
   if (/\b(draft|preview)\b/.test(lower) && /\b(reminder|nudge)\b/.test(lower)) {
     const query = text.replace(/\b(draft|preview|a|an|overdue|reminder|nudge|for|friendly|firm|empathetic|please)\b/gi, " ").trim();
