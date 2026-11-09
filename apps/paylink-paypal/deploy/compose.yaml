@@ -1,7 +1,7 @@
 # PayLink PayPal behind an existing Coolify (Traefik) proxy.
-# Not applied by this change. Host later: paypal.181labs.build
 # Env lives outside git, for example /opt/paypal/secrets.env (mode 600).
 # Build context is the monorepo root (../../.. from this file).
+# Official host and sslip alias use separate TLS routers, as Circles does.
 name: paypal
 services:
   app:
@@ -38,13 +38,18 @@ services:
       traefik.http.services.paypal.loadbalancer.server.port: "3030"
       traefik.http.routers.paypal-http.entrypoints: http
       traefik.http.routers.paypal-http.middlewares: paypal-https
-      traefik.http.routers.paypal-http.rule: Host(`${PAYPAL_HOST:-paypal.181labs.build}`)
+      traefik.http.routers.paypal-http.rule: Host(`${PAYPAL_HOST:-paypal.181labs.build}`) || Host(`${PAYPAL_ALT_HOST:-paypal.example.invalid}`)
       traefik.http.routers.paypal-http.service: paypal
       traefik.http.routers.paypal.entrypoints: https
       traefik.http.routers.paypal.rule: Host(`${PAYPAL_HOST:-paypal.181labs.build}`)
       traefik.http.routers.paypal.tls: "true"
       traefik.http.routers.paypal.tls.certresolver: letsencrypt
       traefik.http.routers.paypal.service: paypal
+      traefik.http.routers.paypal-alt.entrypoints: https
+      traefik.http.routers.paypal-alt.rule: Host(`${PAYPAL_ALT_HOST:-paypal.example.invalid}`)
+      traefik.http.routers.paypal-alt.tls: "true"
+      traefik.http.routers.paypal-alt.tls.certresolver: letsencrypt
+      traefik.http.routers.paypal-alt.service: paypal
 
 volumes:
   paypal-data:
