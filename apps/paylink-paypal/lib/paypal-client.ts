@@ -367,7 +367,7 @@ function sandboxViewUrl(value: string): string | undefined {
   return value;
 }
 
-export function readWebhook(event: unknown): { id?: string; eventType: string; invoiceId: string; status?: string; transactionId?: string; amount?: string } | null {
+export function readWebhook(event: unknown): { id?: string; eventType: string; invoiceId: string; status?: string; transactionId?: string; amount?: string; amountRefunded?: string } | null {
   const record = asRecord(event);
   const eventType = stringField(record, "event_type");
   if (!eventType.startsWith("INVOICING.INVOICE.")) return null;
@@ -377,15 +377,16 @@ export function readWebhook(event: unknown): { id?: string; eventType: string; i
   if (!invoiceId) return null;
   const payments = asRecord(nested.payments ?? resource.payments);
   const transactions = Array.isArray(payments.transactions) ? payments.transactions : [];
-  const paid = transactions.map(asRecord).find((item) => stringField(item, "transaction_id"));
+  const paid = transactions.map(asRecord).find((item) => stringField(item, "transaction_id") || stringField(item, "payment_id"));
   const paidAmount = asRecord(payments.paid_amount ?? paid?.amount);
   return {
     id: stringField(record, "id") || undefined,
     eventType,
     invoiceId,
     status: stringField(nested, "status") || stringField(resource, "status") || undefined,
-    transactionId: paid ? stringField(paid, "transaction_id") || undefined : undefined,
+    transactionId: paid ? stringField(paid, "transaction_id") || stringField(paid, "payment_id") || undefined : undefined,
     amount: stringField(paidAmount, "value") || undefined,
+    amountRefunded: stringField(asRecord(asRecord(nested.refunds ?? resource.refunds).refund_amount ?? asRecord(nested.refunds ?? resource.refunds).refunded_amount), "value") || undefined,
   };
 }
 

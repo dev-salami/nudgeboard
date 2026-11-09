@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Money } from "./keel";
 import { StatusPill } from "./status-pill";
 import type { PaypalInvoice } from "@/lib/types";
+import { statusEvidence } from "@/lib/evidence";
 
 export function Ledger({ rows, demo = false }: { rows: PaypalInvoice[]; demo?: boolean }) {
   if (rows.length === 0) {
@@ -38,6 +39,7 @@ export function Ledger({ rows, demo = false }: { rows: PaypalInvoice[]; demo?: b
               <td>
                 <StatusPill status={invoice.status} />
                 <span className="block text-xs text-muted">{invoice.paypalStatus}</span>
+                <span className="block break-all text-xs text-muted">{statusEvidence(invoice)}</span>
               </td>
             </tr>
           ))}

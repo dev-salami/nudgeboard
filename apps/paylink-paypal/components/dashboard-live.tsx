@@ -7,6 +7,7 @@ import type { PaypalInvoice } from "@/lib/types";
 import { balance, collectedAmount, receivable } from "@/lib/ledger";
 import { isOpen } from "@/lib/collections-queue";
 import { JUDGE_DEMO_LABEL } from "@/lib/judge-demo-seed";
+import { CollectionsQueue } from "./collections-queue";
 
 export function DashboardLive({ initial, demo = false }: { initial: PaypalInvoice[]; demo?: boolean }) {
   const [rows, setRows] = useState(initial);
@@ -42,6 +43,7 @@ export function DashboardLive({ initial, demo = false }: { initial: PaypalInvoic
 
   return (
     <>
+      <CollectionsQueue invoices={rows} demo={demo} onInvoice={(invoice) => setRows((current) => current.map((row) => row.id === invoice.id ? invoice : row))} />
       <section>
         {demo ? <p className="text-sm text-muted">{JUDGE_DEMO_LABEL}</p> : null}
         <p className="text-2xl">Received this month</p>

@@ -12,6 +12,11 @@ let judgeDb: Database | null = null;
 export function getJudgeDemoDb(): Database {
   if (!judgeDb) {
     judgeDb = { ...emptyDb(), merchant: { name: "Demo Studio", city: "Demo", email: "merchant@studio.example" }, invoices: judgeDemoInvoices(), seeded: true };
+    judgeDb.receipts = judgeDb.invoices.filter((row) => row.receiptId && row.paidAt).map((row) => ({
+      id: row.receiptId!, invoiceId: row.id, number: row.number, clientName: row.clientName, description: row.description,
+      amount: row.amountReceived || row.amount, currency: "USD", paidAt: row.paidAt!, merchantName: "Demo Studio", sample: true,
+      paypalInvoiceId: row.payment?.reference, transactionId: row.txSignature, paidVia: "paypal",
+    }));
   }
   return judgeDb;
 }

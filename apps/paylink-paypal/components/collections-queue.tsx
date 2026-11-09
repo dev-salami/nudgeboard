@@ -3,10 +3,11 @@
 import { useState } from "react";
 import { collectionsQueue } from "@/lib/collections-queue";
 import type { ActionConfirmation, PaypalInvoice } from "@/lib/types";
+import { statusEvidence } from "@/lib/evidence";
 
 type Prepared = { invoiceId: string; proposal?: { reason: string; action: string }; confirmation?: ActionConfirmation; error?: string; result?: string };
 
-export function CollectionsQueue({ invoices, demo = false }: { invoices: PaypalInvoice[]; demo?: boolean }) {
+export function CollectionsQueue({ invoices, demo = false, onInvoice }: { invoices: PaypalInvoice[]; demo?: boolean; onInvoice?: (invoice: PaypalInvoice) => void }) {
   const queue = collectionsQueue(invoices);
   const [selected, setSelected] = useState(queue.map((row) => row.invoiceId));
   const [prepared, setPrepared] = useState<Prepared[]>([]);
@@ -29,6 +30,7 @@ export function CollectionsQueue({ invoices, demo = false }: { invoices: PaypalI
       try {
         const response = await fetch(`/api/confirmations/${c.id}${demo ? "?books=demo" : ""}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision: "confirm", invoiceId: c.invoiceId, action: c.action }) });
         const data = await response.json();
+        if (data.invoice) onInvoice?.(data.invoice);
         row.result = data.error || data.refusal || data.message;
         c.state = data.confirmation?.state || "uncertain";
       } catch { row.result = "Response unavailable — check PayPal; do not repeat."; c.state = "uncertain"; }
@@ -44,6 +46,7 @@ export function CollectionsQueue({ invoices, demo = false }: { invoices: PaypalI
       <label className="flex gap-3"><input type="checkbox" checked={selected.includes(row.invoiceId)} disabled={busy} onChange={(e) => setSelected(e.target.checked ? [...selected, row.invoiceId] : selected.filter((id) => id !== row.invoiceId))} />
         <span>{row.invoice.number} · {row.invoice.clientName} · {row.remaining.toFixed(2)} USD — {row.action === "writeoff" ? "Write off (cancel in PayPal)" : row.action}</span></label>
       <p className="mt-2 text-sm">{row.reason} · {row.tone}</p>
+      <p className="break-all text-xs text-muted">{statusEvidence(row.invoice)}</p>
       {row.invoice.lastRemindedAt ? <p className="text-xs text-muted">Last reminder: {row.invoice.lastRemindedAt}</p> : null}
     </article>)}
     {!queue.length ? <p className="mt-4">No open invoices.</p> : <button className="btn btn-primary mt-5" disabled={busy || !selected.length} onClick={() => void approve()}>Approve selected</button>}

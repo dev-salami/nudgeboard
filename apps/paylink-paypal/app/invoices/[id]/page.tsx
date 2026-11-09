@@ -10,6 +10,7 @@ import { getDb } from "@/lib/store";
 import { withJudgeDemo } from "@/lib/judge-demo-context";
 import { JUDGE_DEMO_LABEL } from "@/lib/judge-demo-seed";
 import { balance } from "@/lib/ledger";
+import { statusEvidence } from "@/lib/evidence";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +46,8 @@ function renderInvoice(id: string, demo: boolean) {
           <Row label="Due" value={formatLongDate(invoice.dueDate)} />
           <Row label="PayPal" value={invoice.payment?.reference || "Not created"} />
           <Row label="PayPal status" value={invoice.paypalStatus || "Not created"} />
+          <Row label="Status evidence" value={statusEvidence(invoice)} />
+          {invoice.lastPaypalEventId ? <Row label="Last webhook event" value={invoice.lastPaypalEventId} /> : null}
           <Row label="Received / remaining" value={`${invoice.amountReceived || "0.00"} / ${balance(invoice).toFixed(2)} USD`} />
           {invoice.amountRefunded ? <Row label="Refund recorded" value={`${invoice.amountRefunded} USD · ${invoice.recordedRefundId || "PayPal GET"}`} /> : null}
           <Row label="Network" value={invoice.payment?.network === "paypal-sandbox" ? "Sandbox" : "Demo"} />
@@ -52,7 +55,7 @@ function renderInvoice(id: string, demo: boolean) {
         <InvoiceActions id={invoice.id} status={invoice.status} paypalStatus={invoice.paypalStatus} demo={demo} initialConfirmation={getDb().confirmations.filter((row) => row.invoiceId === invoice.id && ["pending", "executing", "uncertain"].includes(row.state)).at(-1)} />
         <div className="mt-4 flex flex-wrap gap-2">
           {!demo ? <Link className="btn btn-ghost btn-small" href={`/pay/${invoice.id}`}>Payer page</Link> : null}
-          {invoice.receiptId ? <Link className="btn btn-mint btn-small" href={`/receipts/${invoice.receiptId}`}>Receipt</Link> : null}
+          {invoice.receiptId ? <Link className="btn btn-mint btn-small" href={`/receipts/${invoice.receiptId}${demo ? "?books=demo" : ""}`}>Receipt</Link> : null}
         </div>
       </article>
     </Shell>

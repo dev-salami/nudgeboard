@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { CollectionsQueue } from "@/components/collections-queue";
 import { ArcGauge, BarStrip, type Bar } from "@/components/keel";
 import { DashboardLive } from "@/components/dashboard-live";
 import { Shell } from "@/components/shell";
@@ -37,7 +36,6 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <Link href={demo ? "/dashboard?books=sandbox" : "/dashboard?books=demo"} className="btn btn-ghost">{demo ? "View sandbox books" : "View judge demo"}</Link>
         <Link href="/chat" className="btn btn-primary px-5">+ New invoice</Link>
       </div>
-      <CollectionsQueue key={`${demo}`} invoices={rows} demo={demo} />
       <DashboardLive key={`${demo}`} initial={rows} demo={demo} />
       <section className="mt-3 grid gap-3 lg:grid-cols-[1.6fr_1fr]">
         <article className="card p-6">

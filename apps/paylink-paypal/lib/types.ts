@@ -44,12 +44,16 @@ export interface PaypalInvoice {
   recordedRefundId?: string;
   channel?: "agent" | "email" | "whatsapp" | "manual";
   paypalStatus?: string;
+  lastPaypalEventId?: string;
+  statusSource?: "webhook" | "paypal-get" | "confirmed-action";
+  statusHistory?: { at: string; status: InvoiceStatus; paypalStatus?: string; source: "webhook" | "paypal-get" | "confirmed-action"; eventId?: string }[];
   lastRemindedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface PaypalReceipt {
+  lastPaypalEventId?: string;
   id: string;
   invoiceId: string;
   number: string;

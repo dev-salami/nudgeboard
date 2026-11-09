@@ -16,6 +16,7 @@ import { classifyPaypalInvoice, getPaypalRail } from "./provider";
 import { assertEligible, assertUnchanged, executeConfirmed } from "./confirmations";
 import { getDb, logActivity, updateDb } from "./store";
 import type { ActionConfirmation, PaidVia, PaypalInvoice, PaypalReceipt } from "./types";
+import { recordStatusEvidence, statusEvidence } from "./evidence";
 
 export interface IssueInput {
   clientName: string;
@@ -272,6 +273,7 @@ export async function writeoffInvoice(id: string, origin = appOrigin(), confirma
       invoice.paypalStatus = "CANCELLED";
       invoice.payment!.status = "CANCELLED";
       invoice.status = "expired";
+      recordStatusEvidence(invoice, "confirmed-action");
       invoice.updatedAt = new Date().toISOString();
       logActivity(db, { kind: "status_changed", title: `${invoice.number} cancelled in PayPal`, detail: record.preview.message, invoiceId: id });
       return invoice;
@@ -301,9 +303,9 @@ export async function recordInvoiceMoney(id: string, action: "record-payment" | 
       invoice.updatedAt = new Date().toISOString();
       logActivity(db, { kind: "status_changed", title: `${invoice.number}: ${action}`, detail: `PayPal ${result.reference} · ${record.preview.message}`, invoiceId: id });
     });
-    if (action === "record-payment") {
-      return applyCheck(id, classifyPaypalInvoice({ ...result.invoice, transactionId: result.invoice.transactionId || result.reference }, invoice.amount, invoice.dueDate, new Date()));
-    }
+    invoice.statusSource = "confirmed-action";
+    if (action === "record-payment") applyCheck(id, classifyPaypalInvoice({ ...result.invoice, transactionId: result.invoice.transactionId || result.reference }, invoice.amount, invoice.dueDate, new Date()));
+    updateDb(() => recordStatusEvidence(invoice, "confirmed-action"));
     return invoice;
   });
 }
@@ -321,9 +323,11 @@ export async function syncInvoice(id: string): Promise<PaypalInvoice> {
   if (current.payment.network === "paypal-sandbox" && paypalMode() !== "sandbox") return current;
   try {
     const remote = await getPaypalRail().lookup(current.payment.reference);
+    const previous = JSON.stringify([current.status, current.paypalStatus, current.amountReceived, current.amountRefunded]);
     updateDb((db) => {
       const invoice = must(db.invoices, id);
       invoice.paypalStatus = remote.status;
+      invoice.statusSource = "paypal-get";
       if (remote.amountRefunded !== undefined) invoice.amountRefunded = remote.amountRefunded;
       if (remote.refundId) invoice.recordedRefundId = remote.refundId;
       if (invoice.status === "draft" && remote.status !== "DRAFT") invoice.status = "pending";
@@ -334,7 +338,12 @@ export async function syncInvoice(id: string): Promise<PaypalInvoice> {
     });
     // A draft cannot become overdue merely because its proposed due date passed.
     if (current.status === "draft" && remote.status === "DRAFT") return current;
-    return applyCheck(current.id, classifyPaypalInvoice(remote, current.amount, current.dueDate, new Date()));
+    const result = applyCheck(current.id, classifyPaypalInvoice(remote, current.amount, current.dueDate, new Date()));
+    if (previous !== JSON.stringify([result.status, result.paypalStatus, result.amountReceived, result.amountRefunded])) updateDb((db) => {
+      recordStatusEvidence(result, "paypal-get");
+      logActivity(db, { kind: "status_changed", title: `${result.number}: ${result.paypalStatus}`, detail: statusEvidence(result), invoiceId: id });
+    });
+    return result;
   } catch (error) {
     return applyCheck(current.id, { status: "pending", issue: "rpc_down", message: error instanceof Error ? error.message : "PayPal could not be reached." });
   }
@@ -383,32 +392,24 @@ export function applyWebhook(event: unknown): { ok: boolean; duplicate?: boolean
   if (!invoice) return { ok: false, message: `No local invoice for ${parsed.invoiceId}.` };
   if (invoice.payment?.network !== `paypal-${paypalMode()}`) return { ok: false, message: "Invoice mode differs from webhook mode." };
 
+  if (!parsed.id) return { ok: false, message: "An invoicing event id is required." };
   const type = parsed.eventType.toUpperCase();
-  if (type.endsWith(".PAID") || parsed.status === "PAID" || parsed.status === "MARKED_AS_PAID") {
-    // Even incomplete paid evidence must block reminders while sync reconciles it.
-    updateDb(() => { invoice.paypalStatus = parsed.status || "PAID"; });
-    const updated = applyCheck(invoice.id, classifyPaypalInvoice({ id: parsed.invoiceId, status: parsed.status || "PAID", transactionId: parsed.transactionId, amountPaid: parsed.amount }, invoice.amount, invoice.dueDate, new Date()));
-    updateDb((db) => { if (parsed.id) db.webhookIds.push(parsed.id); });
-    return { ok: true, invoiceId: updated.id, message: `${updated.number} is ${updated.status}.` };
-  }
-  const updated = updateDb((db) => {
-    if (parsed.id) db.webhookIds.push(parsed.id);
-    if (type.endsWith(".CANCELLED") || parsed.status === "CANCELLED") {
-      const row = must(db.invoices, invoice.id);
-      if (canTransition(row.status, "expired")) {
-        row.status = "expired";
-        row.paypalStatus = "CANCELLED";
-        row.updatedAt = new Date().toISOString();
-        logActivity(db, { kind: "status_changed", title: `${row.number} was cancelled in PayPal`, invoiceId: row.id });
-      }
-      return row;
-    }
-    const row = must(db.invoices, invoice.id);
-    row.paypalStatus = parsed.status || row.paypalStatus;
-    row.updatedAt = new Date().toISOString();
-    return row;
+  const status = parsed.status || (type.endsWith(".CANCELLED") ? "CANCELLED" : type.endsWith(".REFUNDED") ? "REFUNDED" : type.endsWith(".PAID") ? "PAID" : invoice.paypalStatus || "SENT");
+  updateDb(() => {
+    invoice.lastPaypalEventId = parsed.id;
+    invoice.statusSource = "webhook";
+    invoice.paypalStatus = status;
+    if (invoice.payment) invoice.payment.status = status;
+    if (parsed.amountRefunded) invoice.amountRefunded = parsed.amountRefunded;
   });
-  return { ok: true, invoiceId: updated.id, message: `${updated.number} is ${updated.status}.` };
+  // Partial payment events carry cumulative paid_amount; never infer full payment from the event name.
+  if (!(invoice.status === "draft" && status === "DRAFT")) applyCheck(invoice.id, classifyPaypalInvoice({ id: parsed.invoiceId, status, transactionId: parsed.transactionId, amountPaid: parsed.amount }, invoice.amount, invoice.dueDate, new Date()));
+  updateDb((db) => {
+    recordStatusEvidence(invoice, "webhook", parsed.id);
+    db.webhookIds.push(parsed.id!);
+    logActivity(db, { kind: "status_changed", title: `${invoice.number}: ${status}`, detail: statusEvidence(invoice), invoiceId: invoice.id });
+  });
+  return { ok: true, invoiceId: invoice.id, message: `${invoice.number} is ${invoice.paypalStatus}.` };
 }
 
 export function totals() {
@@ -469,6 +470,7 @@ function markPaid(db: ReturnType<typeof getDb>, id: string, info: { transactionI
   invoice.paymentIssueDetail = undefined;
   if (invoice.payment) invoice.payment.status = "PAID";
   const receipt: PaypalReceipt = {
+    lastPaypalEventId: invoice.statusSource === "webhook" ? invoice.lastPaypalEventId : undefined,
     id: createId("rcp"),
     invoiceId: invoice.id,
     number: invoice.number,
@@ -490,7 +492,7 @@ function markPaid(db: ReturnType<typeof getDb>, id: string, info: { transactionI
   logActivity(db, {
     kind: "status_changed",
     title: `${invoice.clientName} paid ${invoice.number}`,
-    detail: `${formatUsd(invoice.amount)} USD · ${info.via === "card" ? "card via PayPal" : "PayPal"}`,
+    detail: `${formatUsd(invoice.amount)} USD · ${info.via === "card" ? "card via PayPal" : "PayPal"} · ${statusEvidence(invoice)}`,
     invoiceId: invoice.id,
     href: `/receipts/${receipt.id}`,
     txSignature: info.transactionId,
@@ -498,6 +500,7 @@ function markPaid(db: ReturnType<typeof getDb>, id: string, info: { transactionI
   logActivity(db, {
     kind: "receipt_issued",
     title: `Receipt for ${invoice.number}`,
+    detail: statusEvidence(invoice),
     invoiceId: invoice.id,
     href: `/receipts/${receipt.id}`,
   });
