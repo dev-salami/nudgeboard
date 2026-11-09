@@ -6,7 +6,7 @@ import { completeDemoPayment, findInvoice, issueInvoice, pollSandboxInvoices, re
 import { paypalApiBase } from "./env";
 import { blankStore, getDb } from "./store";
 import { resetPaypalRail } from "./provider";
-import { prepareConfirmation } from "./confirmations";
+import { prepareConfirmation, prepareReminderConfirmation } from "./confirmations";
 
 beforeEach(() => {
   vi.stubEnv("DATA_DIR", mkdtempSync(path.join(tmpdir(), "paypal-sandbox-test-")));
@@ -81,7 +81,7 @@ describe("mocked sandbox merchant and receipt lifecycle", () => {
   it("retains pending state and records errors rather than inventing payment or sending reminders", async () => {
     const remote = sandbox();
     const invoice = await confirmedInvoice();
-    const preview = prepareConfirmation(invoice.id, "remind", input.origin);
+    const preview = await prepareReminderConfirmation(invoice.id, input.origin);
     remote.unavailable();
     expect(await syncInvoice(invoice.id)).toMatchObject({ status: "pending", paymentIssue: "rpc_down" });
     expect(getDb().receipts).toHaveLength(0);
@@ -91,9 +91,9 @@ describe("mocked sandbox merchant and receipt lifecycle", () => {
   it("rechecks sandbox payment state at reminder confirmation and refuses a newly paid invoice", async () => {
     const remote = sandbox();
     const invoice = await confirmedInvoice();
-    const preview = prepareConfirmation(invoice.id, "remind", input.origin);
+    const preview = await prepareReminderConfirmation(invoice.id, input.origin);
     const before = remote.fetchMock.mock.calls.length;
-    expect(prepareConfirmation(invoice.id, "remind", input.origin).id).toBe(preview.id);
+    expect((await prepareReminderConfirmation(invoice.id, input.origin)).id).toBe(preview.id);
     expect(remote.fetchMock).toHaveBeenCalledTimes(before); // Preview cannot even poll.
     remote.paid();
     await expect(remindInvoice(invoice.id, input.origin, preview.id)).rejects.toThrow(/automatic retry is blocked/);

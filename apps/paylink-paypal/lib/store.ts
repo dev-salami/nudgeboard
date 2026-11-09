@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync, renameSync, openSync, closeSync, fsyncSync } from "node:fs";
 import path from "node:path";
 import { addDays, createId, isoDate, type ActivityEvent } from "@181hacks/paylink-core";
-import { dataDir, merchantProfile } from "./env";
+import { dataDir, merchantProfile, paypalMode } from "./env";
 import type { Database, PaypalInvoice } from "./types";
 
 const memory = { current: null as Database | null };
@@ -40,6 +40,9 @@ function readFromDisk(): Database {
     parsed.receipts ??= [];
     parsed.activities ??= [];
     parsed.confirmations ??= [];
+    // Label samples saved by earlier versions, without discarding history.
+    for (const row of parsed.invoices) if (["inv_demo_northwind", "inv_demo_harbour"].includes(row.id)) row.sample = true;
+    for (const row of parsed.receipts) if (row.id === "rcp_demo_harbour") row.sample = true;
     if (!Array.isArray(parsed.confirmations)) throw new Error("Invalid confirmation store; restore it before sending.");
     return parsed;
   } catch (error) {
@@ -109,12 +112,17 @@ export function logActivity(db: Database, event: Omit<ActivityEvent, "id" | "at"
 }
 
 function seed(db: Database): Database {
+  if (paypalMode() === "sandbox") {
+    db.seeded = true;
+    return db;
+  }
   const now = new Date();
   const stamp = now.toISOString();
   const merchant = db.merchant;
   const paidAt = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString();
   const pending: PaypalInvoice = {
     id: "inv_demo_northwind",
+    sample: true,
     number: "PP-2026-1001",
     clientName: "Northwind",
     clientEmail: "ap@northwind.example",
@@ -139,6 +147,7 @@ function seed(db: Database): Database {
   };
   const paid: PaypalInvoice = {
     id: "inv_demo_harbour",
+    sample: true,
     number: "PP-2026-1000",
     clientName: "Harbour & Co",
     clientEmail: "finance@harbour.example",
@@ -170,6 +179,7 @@ function seed(db: Database): Database {
   db.receipts = [
     {
       id: "rcp_demo_harbour",
+      sample: true,
       invoiceId: paid.id,
       number: paid.number,
       clientName: paid.clientName,
@@ -187,6 +197,7 @@ function seed(db: Database): Database {
   db.activities = [
     {
       id: "act_demo_paid",
+      sample: true,
       at: paidAt,
       kind: "receipt_issued",
       title: "Harbour & Co paid PP-2026-1000",
@@ -196,6 +207,7 @@ function seed(db: Database): Database {
     },
     {
       id: "act_demo_sent",
+      sample: true,
       at: stamp,
       kind: "invoice_issued",
       title: "Sent PP-2026-1001 to Northwind",

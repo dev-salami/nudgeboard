@@ -87,6 +87,7 @@ export interface ActionConfirmation {
   id: string;
   invoiceId: string;
   action: "send" | "remind";
+  tone?: "friendly" | "firm" | "empathetic";
   mode: "demo" | "sandbox";
   snapshot: string;
   origin: string;

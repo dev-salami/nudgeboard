@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Delta, Money } from "./keel";
 import { Ledger } from "./ledger";
 import type { PaypalInvoice } from "@/lib/types";
+import { balance, receivable } from "@/lib/ledger";
 
 export function DashboardLive({ initial }: { initial: PaypalInvoice[] }) {
   const [rows, setRows] = useState(initial);
@@ -24,15 +25,15 @@ export function DashboardLive({ initial }: { initial: PaypalInvoice[] }) {
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);
   const received = rows
-    .filter((invoice) => invoice.status === "paid" && invoice.paidAt && new Date(invoice.paidAt) >= monthStart)
-    .reduce((total, invoice) => total + Number(invoice.amount), 0);
+    .filter((invoice) => !invoice.sample && invoice.status === "paid" && invoice.paidAt && new Date(invoice.paidAt) >= monthStart)
+    .reduce((total, invoice) => total + Number(invoice.amountReceived || invoice.amount), 0);
   const outstanding = rows
-    .filter((invoice) => invoice.status === "pending" || invoice.status === "underpaid")
-    .reduce((total, invoice) => total + Number(invoice.amount), 0);
-  const collected = rows.filter((invoice) => invoice.status === "paid").reduce((total, invoice) => total + Number(invoice.amount), 0);
-  const overdue = rows.filter((invoice) => invoice.status === "expired").reduce((total, invoice) => total + Number(invoice.amount), 0);
-  const openCount = rows.filter((invoice) => invoice.status === "pending" || invoice.status === "underpaid").length;
-  const paidCount = rows.filter((invoice) => invoice.status === "paid").length;
+    .filter((invoice) => receivable(invoice) && invoice.status !== "expired")
+    .reduce((total, invoice) => total + balance(invoice), 0);
+  const collected = rows.filter((invoice) => !invoice.sample && invoice.status === "paid").reduce((total, invoice) => total + Number(invoice.amountReceived || invoice.amount), 0);
+  const overdue = rows.filter((invoice) => receivable(invoice) && invoice.status === "expired").reduce((total, invoice) => total + balance(invoice), 0);
+  const openCount = rows.filter((invoice) => receivable(invoice) && invoice.status !== "expired").length;
+  const paidCount = rows.filter((invoice) => !invoice.sample && invoice.status === "paid").length;
 
   return (
     <>
@@ -45,7 +46,7 @@ export function DashboardLive({ initial }: { initial: PaypalInvoice[] }) {
       <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Tile label="Outstanding" value={<Money value={outstanding} />} extra={<Delta tone="flat">{openCount} open</Delta>} />
         <Tile label="Collected" value={<Money value={collected} />} extra={<Delta tone="up">{paidCount} paid</Delta>} />
-        <Tile label="Overdue" value={<Money value={overdue} />} extra={<Delta tone={overdue > 0 ? "down" : "flat"}>{rows.filter((invoice) => invoice.status === "expired").length}</Delta>} />
+        <Tile label="Overdue" value={<Money value={overdue} />} extra={<Delta tone={overdue > 0 ? "down" : "flat"}>{rows.filter((invoice) => receivable(invoice) && invoice.status === "expired").length}</Delta>} />
       </section>
       <section className="card mt-3 p-2 sm:p-3">
         <Ledger rows={rows} />

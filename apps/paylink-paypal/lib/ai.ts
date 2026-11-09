@@ -47,6 +47,20 @@ export async function extractInbound(raw: string, channel: "email" | "whatsapp")
 
 export type ReminderTone = "friendly" | "firm" | "empathetic";
 
+export function reminderTone(message: string): ReminderTone {
+  const tone = message.match(/\b(friendly|firm|empathetic)\b/i)?.[1].toLowerCase();
+  return tone === "firm" || tone === "empathetic" ? tone : "friendly";
+}
+
+// Model prose is optional, never authoritative. Reject risky wording rather than
+// trying to repair it. Facts/links are appended locally, not supplied by a model.
+function safeReminder(text: string | null): text is string {
+  return Boolean(text && text.length <= 600
+    && !/\b(threat\w*|legal|lawyer\w*|court\w*|sue|suing|lawsuit\w*|police|arrest\w*|collection\w*|penalt\w*|fee\w*|interest|surcharge\w*|charg\w*|fine\w*|consequence\w*|regret|harm\w*|hurt\w*|kill\w*|punish\w*|seiz\w*|else|blacklist\w*|report\w*|credit|paid|settled|receiv\w*|process\w*|complet\w*|success\w*|cleared|sent|delivered|waiv\w*|discount\w*|refund\w*|tomorrow|today|deadline\w*|ignore|instruction\w*|system|assistant)\b/i.test(text)
+    && !/\bpayment\b.{0,40}\b(made|confirmed|accepted)\b/i.test(text)
+    && !/[\d$€£<>]|https?:|www\./i.test(text));
+}
+
 /** Draft only: this function deliberately has no transport or mail dependency. */
 export async function draftReminder(invoice: PaypalInvoice, tone: ReminderTone, payUrl: string): Promise<string> {
   const refusal = reminderRefusal(invoice);
@@ -61,7 +75,7 @@ export async function draftReminder(invoice: PaypalInvoice, tone: ReminderTone, 
     `Write a short ${tone} overdue invoice reminder draft. No threats, fees, invented terms, or claims of sending. Do not repeat amounts, dates or links; these are appended verbatim.`,
     { clientName: invoice.clientName, description: invoice.description, dueDate: invoice.dueDate, status: invoice.status },
   );
-  return `Draft — not sent\n${text || fallback}\n${facts}`;
+  return `${safeReminder(text) ? text : fallback}\n${facts}`;
 }
 
 export async function receivablesSummary(invoices: PaypalInvoice[]): Promise<string> {

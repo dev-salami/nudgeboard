@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { prepareConfirmation, cancelConfirmation, executeConfirmed } from "./confirmations";
+import { prepareConfirmation, prepareReminderConfirmation, cancelConfirmation, executeConfirmed } from "./confirmations";
 import { issueInvoice, sendExisting, remindInvoice } from "./invoices";
 import { blankStore, getDb, updateDb } from "./store";
 import { getPaypalRail, resetPaypalRail } from "./provider";
@@ -23,13 +23,14 @@ async function sentInvoice() {
 }
 
 describe("local previews and explicit confirmation — mocked/local actions only", () => {
-  it("previews invoices, reminders and inbox data without ANY external requests", async () => {
+  it("previews sends and inbox data locally, with forced-demo reminder fallback", async () => {
     vi.stubEnv("LLM_API_KEY", "fake-key");
     const response = await runChat({ message: "Preview invoice Ada ada@example.com 150 USD for logo, due Friday" }, origin);
     expect(response.invoice?.status).toBe("draft");
     expect(response.invoice?.payment).toBeUndefined();
     expect(response.confirmation?.action).toBe("send");
     const invoice = await sentInvoice(); // in-memory demo provider only
+    vi.stubEnv("PAYLINK_DEMO_MODE", "1");
     const reminder = await runChat({ message: `Preview reminder for ${invoice.number}` }, origin);
     expect(reminder.confirmation?.action).toBe("remind");
     const inbox = await runChat({ message: "From: Mina <mina@example.com>\nSubject: Logo\nPlease invoice me 90 USD for logo, due Friday" }, origin);
@@ -158,11 +159,11 @@ describe("local previews and explicit confirmation — mocked/local actions only
 
   it("refuses draft and paid reminder previews and a payment after preview", async () => {
     const draft = await issueInvoice(input);
-    expect(() => prepareConfirmation(draft.id, "remind", origin)).toThrow(/paid or still a draft/);
+    await expect(prepareReminderConfirmation(draft.id, origin)).rejects.toThrow(/paid or still a draft/);
     const invoice = await sentInvoice();
-    const token = prepareConfirmation(invoice.id, "remind", origin);
+    const token = await prepareReminderConfirmation(invoice.id, origin);
     updateDb(() => { invoice.status = "paid"; invoice.paypalStatus = "PAID"; });
-    expect(() => prepareConfirmation(invoice.id, "remind", origin)).toThrow(/paid/);
+    await expect(prepareReminderConfirmation(invoice.id, origin)).rejects.toThrow(/paid/);
     expect((await remindInvoice(invoice.id, origin, token.id)).refusal).toMatch(/paid/);
     expect(getDb().emails).toHaveLength(0);
   });
@@ -170,7 +171,7 @@ describe("local previews and explicit confirmation — mocked/local actions only
   it("deduplicates reminders and keeps demo mail local even with a mail key", async () => {
     const invoice = await sentInvoice();
     vi.stubEnv("RESEND_API_KEY", "fake-mail-key");
-    const token = prepareConfirmation(invoice.id, "remind", origin);
+    const token = await prepareReminderConfirmation(invoice.id, origin);
     const chase = vi.spyOn(getPaypalRail(), "chase");
     await remindInvoice(invoice.id, origin, token.id);
     await expect(remindInvoice(invoice.id, origin, token.id)).rejects.toThrow(/done/);

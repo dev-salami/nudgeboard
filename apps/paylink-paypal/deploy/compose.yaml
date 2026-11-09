@@ -11,7 +11,7 @@ services:
     image: paylink-paypal:${PAYPAL_REVISION:-latest}
     env_file:
       - path: ${PAYPAL_ENV_FILE:-/opt/paypal/secrets.env}
-        required: false
+        required: true
     environment:
       PORT: "3030"
       HOSTNAME: 0.0.0.0

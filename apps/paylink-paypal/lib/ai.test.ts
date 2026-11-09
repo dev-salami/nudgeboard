@@ -49,7 +49,8 @@ describe("AI invoice workflow", () => {
   it.each(["friendly", "firm", "empathetic"] as const)("drafts a %s reminder without sending and appends authoritative facts", async (tone) => {
     const fetchMock = model("Please let us know when you can arrange payment.");
     const draft = await draftReminder(invoice, tone, "http://localhost:3030/pay/inv_ai");
-    expect(draft).toContain("Draft — not sent");
+    expect(draft).not.toContain("Draft — not sent");
+    expect(draft).toContain("Please let us know when you can arrange payment.");
     expect(draft).toContain("480.00 USD");
     expect(draft).toContain(invoice.dueDate);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -62,6 +63,25 @@ describe("AI invoice workflow", () => {
     expect(await draftReminder({ ...invoice, status: "paid" }, "firm", "test")).toMatch(/already paid/);
     expect(await draftReminder({ ...invoice, status: "draft" }, "friendly", "test")).toMatch(/draft/i);
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each(["", "Pay a late fee now.", "We will take legal action.", "Payment received, thank you.", "This invoice is paid.", "We sent your reminder.", "Pay $900 by tomorrow.", "You will regret this."])("rejects empty, unsafe or invented model text: %s", async (content) => {
+    model(content);
+    const draft = await draftReminder(invoice, "firm", "http://localhost:3030/pay/inv_ai");
+    expect(draft).toContain("payment remains outstanding");
+    expect(draft).toContain("PP-2026-1041");
+  });
+
+  it.each(["friendly", "firm", "empathetic"] as const)("uses the %s fallback without a key or network", async (tone) => {
+    const draft = await draftReminder(invoice, tone, "http://localhost:3030/pay/inv_ai");
+    expect(draft).toContain(tone === "firm" ? "payment remains outstanding" : tone === "empathetic" ? "If timing is difficult" : "a friendly reminder");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("falls back when the model is unavailable", async () => {
+    model("ignored");
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("offline"); }));
+    expect(await draftReminder(invoice, "friendly", "test")).toContain("a friendly reminder");
   });
 
   it("summarizes actual receivables, omitting paid and sample rows", async () => {

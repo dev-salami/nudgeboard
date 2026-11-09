@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "../app/api/confirmations/[id]/route";
-import { prepareConfirmation } from "./confirmations";
+import { prepareConfirmation, prepareReminderConfirmation } from "./confirmations";
 import { issueInvoice, sendExisting } from "./invoices";
 import { getPaypalRail, resetPaypalRail } from "./provider";
 import { blankStore, getDb } from "./store";
@@ -18,7 +18,7 @@ beforeEach(() => {
 async function preview(action: ActionConfirmation["action"] = "send") {
   const invoice = await issueInvoice({ clientName: "Ada", clientEmail: "ada@example.com", amount: "150", description: "Logo", dueDate: "2026-12-01", asDraft: true });
   if (action === "remind") await sendExisting(invoice.id, origin, prepareConfirmation(invoice.id, "send", origin).id); // Local demo only.
-  return prepareConfirmation(invoice.id, action, origin);
+  return action === "remind" ? prepareReminderConfirmation(invoice.id, origin) : prepareConfirmation(invoice.id, "send", origin);
 }
 
 function decide(record: ActionConfirmation, body: unknown, headers: Record<string, string> = {}) {

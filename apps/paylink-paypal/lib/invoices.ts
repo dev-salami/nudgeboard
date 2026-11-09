@@ -10,6 +10,7 @@ import {
 import { appOrigin, paypalMode } from "./env";
 import { sendMail } from "./mail";
 import { formatUsd, paypalAmount } from "./money";
+import { balance, modeInvoices, receivable } from "./ledger";
 import { readWebhook } from "./paypal-client";
 import { classifyPaypalInvoice, getPaypalRail } from "./provider";
 import { assertEligible, assertUnchanged, executeConfirmed } from "./confirmations";
@@ -44,7 +45,7 @@ export function findInvoice(query: string, invoices = getDb().invoices): PaypalI
 }
 
 export function unpaidInvoices(): PaypalInvoice[] {
-  return getDb().invoices.filter((invoice) => invoice.status !== "paid");
+  return modeInvoices(getDb().invoices, paypalMode()).filter((invoice) => invoice.status !== "paid");
 }
 
 export async function issueInvoice(input: IssueInput): Promise<PaypalInvoice> {
@@ -305,7 +306,7 @@ export function completeDemoPayment(id: string, via: PaidVia = "paypal"): Paypal
   const current = findInvoice(id);
   if (!current) throw new Error("That invoice is gone.");
   if (current.status === "draft") throw new Error("This invoice has not been sent.");
-  if (current.payment?.network === "paypal-sandbox") {
+  if (paypalMode() !== "demo" || current.payment?.network === "paypal-sandbox") {
     throw new Error("This invoice is on PayPal sandbox. Pay there, then sync.");
   }
   if (current.status === "paid") return current;
@@ -330,13 +331,18 @@ export function applyWebhook(event: unknown): { ok: boolean; duplicate?: boolean
   }
   const invoice = findInvoice(parsed.invoiceId) ?? getDb().invoices.find((item) => item.payment?.reference === parsed.invoiceId);
   if (!invoice) return { ok: false, message: `No local invoice for ${parsed.invoiceId}.` };
+  if (invoice.payment?.network !== `paypal-${paypalMode()}`) return { ok: false, message: "Invoice mode differs from webhook mode." };
 
   const type = parsed.eventType.toUpperCase();
+  if (type.endsWith(".PAID") || parsed.status === "PAID" || parsed.status === "MARKED_AS_PAID") {
+    // Even incomplete paid evidence must block reminders while sync reconciles it.
+    updateDb(() => { invoice.paypalStatus = parsed.status || "PAID"; });
+    const updated = applyCheck(invoice.id, classifyPaypalInvoice({ id: parsed.invoiceId, status: parsed.status || "PAID", transactionId: parsed.transactionId, amountPaid: parsed.amount }, invoice.amount, invoice.dueDate, new Date()));
+    updateDb((db) => { if (parsed.id) db.webhookIds.push(parsed.id); });
+    return { ok: true, invoiceId: updated.id, message: `${updated.number} is ${updated.status}.` };
+  }
   const updated = updateDb((db) => {
     if (parsed.id) db.webhookIds.push(parsed.id);
-    if (type.endsWith(".PAID") || parsed.status === "PAID" || parsed.status === "MARKED_AS_PAID") {
-      return markPaid(db, invoice.id, { transactionId: parsed.transactionId, amount: parsed.amount || invoice.amount, via: "paypal" });
-    }
     if (type.endsWith(".CANCELLED") || parsed.status === "CANCELLED") {
       const row = must(db.invoices, invoice.id);
       if (canTransition(row.status, "expired")) {
@@ -356,12 +362,11 @@ export function applyWebhook(event: unknown): { ok: boolean; duplicate?: boolean
 }
 
 export function totals() {
-  const invoices = getDb().invoices.filter((invoice) => !invoice.sample);
-  const sum = (rows: PaypalInvoice[]) => rows.reduce((total, invoice) => total + Number(invoice.amount), 0);
+  const invoices = modeInvoices(getDb().invoices, paypalMode()).filter((invoice) => !invoice.sample);
   return {
-    outstanding: sum(invoices.filter((invoice) => invoice.status === "pending" || invoice.status === "underpaid")),
-    collected: sum(invoices.filter((invoice) => invoice.status === "paid")),
-    overdue: sum(invoices.filter((invoice) => invoice.status === "expired")),
+    outstanding: invoices.filter((invoice) => receivable(invoice) && invoice.status !== "expired").reduce((total, invoice) => total + balance(invoice), 0),
+    collected: invoices.filter((invoice) => invoice.status === "paid").reduce((total, invoice) => total + Number(invoice.amountReceived || invoice.amount), 0),
+    overdue: invoices.filter((invoice) => receivable(invoice) && invoice.status === "expired").reduce((total, invoice) => total + balance(invoice), 0),
     drafts: invoices.filter((invoice) => invoice.status === "draft").length,
   };
 }
@@ -374,7 +379,12 @@ function applyCheck(id: string, result: PaymentCheckResult): PaypalInvoice {
       invoice.paymentIssueDetail = undefined;
     }
     if (result.status === "paid") {
-      return markPaid(db, id, { transactionId: result.signature, amount: result.amountReceived || invoice.amount, via: invoice.paidVia ?? "paypal" });
+      if (!result.signature || !result.amountReceived) {
+        invoice.paymentIssue = "rpc_down";
+        invoice.paymentIssueDetail = "Payment evidence is incomplete. Sync again; no receipt issued.";
+        return invoice;
+      }
+      return markPaid(db, id, { transactionId: result.signature, amount: result.amountReceived, via: invoice.paidVia ?? "paypal" });
     }
     if (result.status === "underpaid" && canTransition(invoice.status, "underpaid")) {
       invoice.status = "underpaid";
@@ -395,6 +405,7 @@ function applyCheck(id: string, result: PaymentCheckResult): PaypalInvoice {
 
 function markPaid(db: ReturnType<typeof getDb>, id: string, info: { transactionId?: string; amount: string; via: PaidVia }): PaypalInvoice {
   const invoice = must(db.invoices, id);
+  if (!info.transactionId?.trim()) throw new Error("Verified payment transaction evidence is required before issuing a receipt.");
   if (invoice.status === "paid") return invoice;
   if (!canTransition(invoice.status, "paid")) return invoice;
   const paidAt = new Date().toISOString();
@@ -414,7 +425,7 @@ function markPaid(db: ReturnType<typeof getDb>, id: string, info: { transactionI
     clientName: invoice.clientName,
     clientEmail: invoice.clientEmail,
     description: invoice.description,
-    amount: invoice.amount,
+    amount: invoice.amountReceived,
     currency: "USD",
     paidAt,
     paypalInvoiceId: invoice.payment?.reference,

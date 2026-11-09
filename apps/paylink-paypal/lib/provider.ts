@@ -125,14 +125,17 @@ export function createPaypalRail(client: PaypalTransport): PaypalRail {
 export function classifyPaypalInvoice(remote: PaypalRemoteInvoice, expected: string, dueDate: string, now: Date): PaymentCheckResult {
   const status = remote.status.toUpperCase();
   if (status === "PAID" || status === "MARKED_AS_PAID") {
-    const amountOk = remote.amountPaid ? compareUsd(remote.amountPaid, expected) >= 0 : true;
+    if (!remote.transactionId?.trim() || !remote.amountPaid) {
+      return { status: "pending", issue: "rpc_down", message: "PayPal payment evidence is incomplete. Sync again; no receipt issued." };
+    }
+    const amountOk = compareUsd(remote.amountPaid, expected) >= 0;
     const observation = classifyInvoiceObservation(
       {
         found: true,
         amountOk,
         mintOk: true,
         signature: remote.transactionId,
-        amountReceived: remote.amountPaid || paypalAmount(expected),
+        amountReceived: remote.amountPaid,
       },
       dueDate,
       now,

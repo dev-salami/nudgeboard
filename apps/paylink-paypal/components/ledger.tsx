@@ -25,6 +25,7 @@ export function Ledger({ rows }: { rows: PaypalInvoice[] }) {
             <tr key={invoice.id}>
               <td>
                 <Link href={`/invoices/${invoice.id}`}>{invoice.clientName}</Link>
+                {invoice.sample ? <span className="pill ml-2">Demo sample</span> : null}
                 <span className="block text-xs text-muted">{invoice.description}</span>
               </td>
               <td className="text-muted">{invoice.number}</td>

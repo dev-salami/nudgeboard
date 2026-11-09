@@ -15,6 +15,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
     <div className="pay-shell bg-bg">
       <article className="paper pay-card p-6 sm:p-8">
         <span className="paid-seal">Paid</span>
+        {receipt.sample ? <p className="mt-2 text-sm text-muted">Demo sample — not a real payment</p> : null}
         <p className="t-micro mt-6 text-muted">Receipt {receipt.number}</p>
         <h1 className="mt-2 text-3xl">{receipt.merchantName}</h1>
         <p className="num pay-amount mt-4">

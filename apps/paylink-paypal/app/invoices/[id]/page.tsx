@@ -18,6 +18,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   return (
     <Shell merchantName={merchant.name}>
       <article className="paper mx-auto max-w-xl p-6 sm:p-8">
+        {invoice.sample ? <p className="mb-3 text-sm text-muted">Demo sample — not a real invoice</p> : null}
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="t-micro text-muted">{merchant.name}</p>

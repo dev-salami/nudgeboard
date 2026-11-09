@@ -8,8 +8,8 @@ import {
 } from "@181hacks/paylink-core";
 import { findInvoice, issueInvoice, unpaidInvoices, syncInvoice, pollSandboxInvoices } from "./invoices";
 import { detectChannel, parseInbound } from "./ingest";
-import { receivablesSummary } from "./ai";
-import { prepareConfirmation } from "./confirmations";
+import { receivablesSummary, reminderTone, type ReminderTone } from "./ai";
+import { prepareConfirmation, prepareReminderConfirmation } from "./confirmations";
 import { demoMode, env, paypalMode } from "./env";
 import { formatUsd } from "./money";
 import type { ActionConfirmation, PaypalInvoice } from "./types";
@@ -102,9 +102,9 @@ export async function runChat(request: ChatRequest, origin: string): Promise<Cha
     const query = text.replace(/\b(draft|preview|a|an|overdue|reminder|nudge|for|friendly|firm|empathetic|please)\b/gi, " ").trim();
     const invoice = findInvoice(query);
     if (!invoice) return { mode: agentMode(), paypal, reply: "Which invoice should I draft a reminder for? Use its invoice number or client name." };
-    return act({ type: "send_reminder", query: invoice.id }, origin, "agent");
+    return act({ type: "send_reminder", query: invoice.id }, origin, "agent", reminderTone(text));
   }
-  if (/^(?:please\s+)?(?:remind|chase|nudge)\b/i.test(text)) return act(parseDemoCommand(text), origin, "agent");
+  if (/^(?:please\s+)?(?:remind|chase|nudge)\b/i.test(text)) return act(parseDemoCommand(text.replace(/\b(friendly|firm|empathetic)\b/gi, "")), origin, "agent", reminderTone(text));
 
   const channel = detectChannel(text);
   if (channel) {
@@ -126,16 +126,16 @@ export async function runChat(request: ChatRequest, origin: string): Promise<Cha
   }
 
   const mode = agentMode();
-  // Explicit draft/preview commands are entirely local, even with an LLM key.
+  // Explicit draft/preview intent parsing is local; reminder prose may use AI.
   const intent = mode === "llm" && !/\b(draft|preview)\b/i.test(text) ? await llmIntent(request) : parseDemoCommand(text.replace(/^preview\s+/i, ""));
-  return act(intent, origin, "agent");
+  return act(intent, origin, "agent", reminderTone(text));
 }
 
 function agentMode(): "demo" | "llm" {
   return demoMode() ? "demo" : "llm";
 }
 
-async function act(intent: DemoIntent, origin: string, channel: PaypalInvoice["channel"]): Promise<ChatResponse> {
+async function act(intent: DemoIntent, origin: string, channel: PaypalInvoice["channel"], tone: ReminderTone = "friendly"): Promise<ChatResponse> {
   const mode = agentMode();
   const paypal = paypalMode();
   if (intent.type === "help") {
@@ -150,7 +150,7 @@ async function act(intent: DemoIntent, origin: string, channel: PaypalInvoice["c
     await pollSandboxInvoices();
     const invoices = unpaidInvoices();
     if (invoices.length === 0) return { mode, paypal, invoices, reply: "Nothing is open. The books are clear." };
-    const lines = invoices.map((invoice) => `${invoice.clientName} · ${formatUsd(invoice.amount)} USD · ${invoice.status} · ${invoice.number}`).join("\n");
+    const lines = invoices.map((invoice) => `${invoice.sample ? "Demo sample · " : ""}${invoice.clientName} · ${formatUsd(invoice.amount)} USD · ${invoice.status} · ${invoice.number}`).join("\n");
     return { mode, paypal, invoices, reply: `${invoices.length} open ${invoices.length === 1 ? "invoice" : "invoices"}:\n${lines}` };
   }
   if (intent.type === "create_invoice") {
@@ -196,7 +196,7 @@ async function act(intent: DemoIntent, origin: string, channel: PaypalInvoice["c
   try {
     const invoice = findInvoice(intent.query);
     if (!invoice) return { mode, paypal, reply: "Which exact invoice should I preview? Use its invoice number; a name matching multiple invoices is ambiguous. Nothing was sent." };
-    const confirmation = prepareConfirmation(invoice.id, "remind", origin);
+    const confirmation = await prepareReminderConfirmation(invoice.id, origin, tone);
     return {
       mode,
       paypal,

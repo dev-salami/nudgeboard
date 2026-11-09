@@ -1,10 +1,10 @@
 import { createId } from "@181hacks/paylink-core";
 import { appOrigin, paypalEnvironment, paypalMode } from "./env";
-import { formatUsd } from "./money";
+import type { ReminderTone } from "./ai";
 import { getDb, updateDb } from "./store";
 import type { ActionConfirmation, PaypalInvoice } from "./types";
 
-// No provider/model/mail imports: preparing a preview is strictly local.
+// Send previews stay synchronous and local. Only the async reminder helper loads AI.
 export function actionSnapshot(invoice: PaypalInvoice): string {
   return JSON.stringify([invoice.id, invoice.number, invoice.clientName, invoice.clientEmail,
     invoice.amount, invoice.currency, invoice.description, invoice.dueDate, invoice.status,
@@ -24,25 +24,53 @@ export function assertEligible(invoice: PaypalInvoice, action: ActionConfirmatio
   }
   if (action === "remind" && !["pending", "expired", "underpaid"].includes(invoice.status)) throw new Error("No reminder: invoice is already paid or still a draft.");
   if (["PAID", "MARKED_AS_PAID", "CANCELLED", "REFUNDED", "PAYMENT_PENDING"].includes(invoice.paypalStatus || "")) throw new Error("No send: PayPal payment state is not eligible.");
-  if (action === "remind" && (!invoice.payment?.reference || invoice.payment.status === "DRAFT")) throw new Error("No reminder: this invoice has not been sent.");
+  if (action === "remind" && (!invoice.payment?.reference || invoice.payment.status === "DRAFT" || invoice.paypalStatus === "DRAFT")) throw new Error("No reminder: this invoice has not been sent.");
   if (paypalMode() === "sandbox" && !invoice.clientEmail) throw new Error("Add a client email before preparing a send.");
 }
 
-export function prepareConfirmation(invoiceId: string, action: ActionConfirmation["action"], origin = appOrigin()): ActionConfirmation {
+export function prepareConfirmation(invoiceId: string, action: "send", origin = appOrigin()): ActionConfirmation {
   const invoice = getDb().invoices.find((row) => row.id === invoiceId);
   if (!invoice) throw new Error("Choose an exact invoice.");
   assertEligible(invoice, action);
+  return saveConfirmation(invoice, action, origin, `Invoice ${invoice.number} for ${invoice.description}.`);
+}
+
+export async function prepareReminderConfirmation(invoiceId: string, origin = appOrigin(), tone: ReminderTone = "friendly"): Promise<ActionConfirmation> {
+  const invoice = getDb().invoices.find((row) => row.id === invoiceId);
+  if (!invoice) throw new Error("Choose an exact invoice.");
+  assertEligible(invoice, "remind"); // Refuse before loading/calling AI.
+  assertNotBlocked(invoiceId);
+  const snapshot = actionSnapshot(invoice);
+  const existing = pendingConfirmation(invoiceId, "remind", origin, snapshot, tone);
+  if (existing) return existing;
+  const { draftReminder } = await import("./ai");
+  const message = await draftReminder(invoice, tone, `${origin.replace(/\/$/, "")}/pay/${invoice.id}`);
+  const current = getDb().invoices.find((row) => row.id === invoiceId);
+  if (!current || actionSnapshot(current) !== snapshot) throw new Error("The invoice or payment state changed. Prepare and review a fresh preview.");
+  assertEligible(current, "remind");
+  return saveConfirmation(current, "remind", origin, message, tone);
+}
+
+function assertNotBlocked(invoiceId: string) {
+  if (getDb().confirmations.some((row) => row.invoiceId === invoiceId && ["executing", "uncertain"].includes(row.state))) {
+    throw new Error("An earlier action may have reached PayPal. Operator review is required; do not retry.");
+  }
+}
+
+function pendingConfirmation(invoiceId: string, action: ActionConfirmation["action"], origin: string, snapshot: string, tone?: ReminderTone) {
+  return getDb().confirmations.find((row) => row.invoiceId === invoiceId && row.action === action && row.mode === paypalMode() && row.snapshot === snapshot && row.origin === origin && row.tone === tone && row.state === "pending" && Date.parse(row.expiresAt) > Date.now());
+}
+
+function saveConfirmation(invoice: PaypalInvoice, action: ActionConfirmation["action"], origin: string, message: string, tone?: ReminderTone): ActionConfirmation {
+  const invoiceId = invoice.id;
   const snapshot = actionSnapshot(invoice);
   return updateDb((db) => {
-    const blocked = db.confirmations.find((row) => row.invoiceId === invoiceId && ["executing", "uncertain"].includes(row.state));
-    if (blocked) throw new Error("An earlier action may have reached PayPal. Operator review is required; do not retry.");
-    const existing = db.confirmations.find((row) => row.invoiceId === invoiceId && row.action === action && row.mode === paypalMode() && row.snapshot === snapshot && row.origin === origin && row.state === "pending" && Date.parse(row.expiresAt) > Date.now());
+    assertNotBlocked(invoiceId);
+    const existing = pendingConfirmation(invoiceId, action, origin, snapshot, tone);
     if (existing) return existing;
     // Only one pending preview per invoice. Changed/replaced previews cannot execute.
     for (const row of db.confirmations) if (row.invoiceId === invoiceId && row.state === "pending") row.state = "stale";
-    const message = action === "send" ? `Invoice ${invoice.number} for ${invoice.description}.`
-      : `${invoice.clientName}, ${invoice.number} for ${formatUsd(invoice.amount)} USD (${invoice.description}) is still open. Pay here: ${origin.replace(/\/$/, "")}/pay/${invoice.id}`;
-    const record: ActionConfirmation = { id: createId("confirm"), invoiceId, action, mode: paypalMode(), snapshot, origin,
+    const record: ActionConfirmation = { id: createId("confirm"), invoiceId, action, tone, mode: paypalMode(), snapshot, origin,
       createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(), state: "pending",
       preview: { number: invoice.number, clientName: invoice.clientName, clientEmail: invoice.clientEmail, amount: invoice.amount, currency: "USD", description: invoice.description, dueDate: invoice.dueDate, message } };
     db.confirmations.push(record);

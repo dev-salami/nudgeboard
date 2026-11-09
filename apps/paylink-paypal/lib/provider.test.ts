@@ -26,7 +26,7 @@ function input(amount = "220"): CreatePaymentInput {
 describe("PayPal PaymentProvider", () => {
   it("classifies remote payment states, overdue invoices, zero and partial payments", () => {
     const now = new Date("2026-11-07T12:00:00Z");
-    const classify = (status: string, amountPaid?: string, due = "2026-11-10") => classifyPaypalInvoice({ id: "INV2-STATUS", status, amountPaid }, "100", due, now);
+    const classify = (status: string, amountPaid?: string, due = "2026-11-10") => classifyPaypalInvoice({ id: "INV2-STATUS", status, amountPaid, transactionId: "TX-MOCK" }, "100", due, now);
     expect(classify("SENT").status).toBe("pending");
     expect(classify("SENT", undefined, "2026-11-01").status).toBe("expired");
     expect(classify("PAYMENT_PENDING").status).toBe("pending");
@@ -35,6 +35,8 @@ describe("PayPal PaymentProvider", () => {
     expect(classify("PAID", "100.00", "2026-11-01").status).toBe("paid");
     expect(classify("CANCELLED").status).toBe("expired");
     expect(classify("REFUNDED").status).toBe("expired");
+    expect(classify("PAID")).toMatchObject({ status: "pending", issue: "rpc_down" });
+    expect(classifyPaypalInvoice({ id: "INV2-NO-EVIDENCE", status: "PAID", amountPaid: "100.00" }, "100", "2026-11-10", now)).toMatchObject({ status: "pending", issue: "rpc_down" });
   });
   it("issues a USD pay link and reports paid after a simulated capture", async () => {
     const client = createPaypalClient({ mode: "demo" });

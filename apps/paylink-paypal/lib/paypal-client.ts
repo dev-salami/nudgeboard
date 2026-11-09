@@ -311,7 +311,7 @@ export function readWebhook(event: unknown): { id?: string; eventType: string; i
   const payments = asRecord(nested.payments ?? resource.payments);
   const transactions = Array.isArray(payments.transactions) ? payments.transactions : [];
   const paid = transactions.map(asRecord).find((item) => stringField(item, "transaction_id"));
-  const paidAmount = asRecord(paid?.amount);
+  const paidAmount = asRecord(payments.paid_amount ?? paid?.amount);
   return {
     id: stringField(record, "id") || undefined,
     eventType,

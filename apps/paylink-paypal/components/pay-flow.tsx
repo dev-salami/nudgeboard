@@ -83,6 +83,7 @@ export function PayFlow({ invoice: initial, merchantName }: { invoice: PaypalInv
 
   return (
     <article className="paper pay-card p-5 sm:p-6">
+      {invoice.sample ? <p className="mb-3 text-sm text-muted">Demo sample — no real payment</p> : null}
       <ol className="stepper" aria-label="Payment steps">
         <li className={step > 1 || paid ? "done" : step === 1 ? "on" : ""}><span>1</span> Summary</li>
         <li className={step > 2 || paid ? "done" : step === 2 ? "on" : ""}><span>2</span> Method</li>
