@@ -8,7 +8,7 @@
 4. Chat remains secondary at `/chat`. Typing **“yes”**, **“confirm”** or **“send it”** is refused as authorization. Chat cannot bulk-send reminders.
 5. Optional: paste a fictional email/WhatsApp request into `/inbox`. It creates a **local draft only**, not a mailbox connection or an outgoing invoice.
 
-The ungated **View judge demo / View sandbox books** control separates the datasets. Judge fixtures and confirmations are in-memory and reset on process restart; they never become sandbox payment evidence. The deployed service may need this branch deployed by its operator before these upgrades appear; this coding task did not deploy it.
+The ungated **View judge demo / View sandbox books** control separates the datasets. Judge fixtures and confirmations are in-memory and reset on process restart; they never become sandbox payment evidence. These upgrades are live at https://paypal.181labs.build.
 
 The displayed product name is defined once in [`lib/brand.ts`](./lib/brand.ts); this heading mirrors `PRODUCT_NAME`.
 
