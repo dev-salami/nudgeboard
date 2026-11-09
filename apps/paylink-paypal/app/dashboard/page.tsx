@@ -9,6 +9,7 @@ import { getDb } from "@/lib/store";
 import type { PaypalInvoice } from "@/lib/types";
 import { booksView, collectionDays } from "@/lib/books-view";
 import { JUDGE_DEMO_LABEL } from "@/lib/judge-demo-seed";
+import { collectedAmount } from "@/lib/ledger";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const { rows, demo } = booksView(db.invoices, mode, (await searchParams).books);
   const real = rows.filter((invoice) => invoice.status !== "draft" && !["CANCELLED", "REFUNDED"].includes(invoice.paypalStatus || ""));
   const billed = real.reduce((total, invoice) => total + Number(invoice.amount), 0);
-  const collected = real.filter((invoice) => invoice.status === "paid").reduce((total, invoice) => total + Number(invoice.amountReceived || invoice.amount), 0);
+  const collected = real.reduce((total, invoice) => total + collectedAmount(invoice), 0);
   const ratio = billed > 0 ? collected / billed : 0;
 
   return (

@@ -40,6 +40,8 @@ export interface PaypalInvoice {
   source?: "judge-demo";
   lastPaymentAt?: string;
   amountRefunded?: string;
+  recordedPaymentId?: string;
+  recordedRefundId?: string;
   channel?: "agent" | "email" | "whatsapp" | "manual";
   paypalStatus?: string;
   lastRemindedAt?: string;
@@ -90,7 +92,8 @@ export interface Database {
 export interface ActionConfirmation {
   id: string;
   invoiceId: string;
-  action: "send" | "remind" | "writeoff";
+  action: "send" | "remind" | "writeoff" | "record-payment" | "record-refund";
+  moneyInput?: import("./paypal-client").PaypalMoneyInput;
   tone?: "friendly" | "firm" | "empathetic";
   mode: "demo" | "sandbox";
   snapshot: string;

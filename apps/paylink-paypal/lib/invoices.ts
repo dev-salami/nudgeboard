@@ -10,7 +10,7 @@ import {
 import { appOrigin, paypalMode } from "./env";
 import { sendMail } from "./mail";
 import { formatUsd, paypalAmount } from "./money";
-import { balance, modeInvoices, receivable } from "./ledger";
+import { balance, collectedAmount, modeInvoices, receivable } from "./ledger";
 import { readWebhook } from "./paypal-client";
 import { classifyPaypalInvoice, getPaypalRail } from "./provider";
 import { assertEligible, assertUnchanged, executeConfirmed } from "./confirmations";
@@ -279,6 +279,35 @@ export async function writeoffInvoice(id: string, origin = appOrigin(), confirma
   });
 }
 
+export async function recordInvoiceMoney(id: string, action: "record-payment" | "record-refund", origin = appOrigin(), confirmationId?: string) {
+  return executeConfirmed(confirmationId, id, action, origin, async (record) => {
+    const invoice = must(getDb().invoices, id);
+    if (invoice.payment?.network === "paypal-sandbox") await syncInvoice(id);
+    if (invoice.paymentIssue === "rpc_down") throw new Error("PayPal status could not be verified.");
+    assertUnchanged(record, invoice);
+    if (!record.moneyInput) throw new Error("Money preview input missing.");
+    const client = getPaypalRail().client;
+    const result = action === "record-payment" ? await client.recordPayment(invoice.payment!.reference, record.moneyInput) : await client.recordRefund(invoice.payment!.reference, record.moneyInput);
+    updateDb((db) => {
+      invoice.paypalStatus = result.invoice.status;
+      if (invoice.payment) invoice.payment.status = result.invoice.status;
+      if (action === "record-payment") {
+        invoice.recordedPaymentId = result.reference;
+        invoice.lastPaymentAt = record.moneyInput!.date;
+      } else {
+        invoice.recordedRefundId = result.reference;
+        invoice.amountRefunded = result.invoice.amountRefunded;
+      }
+      invoice.updatedAt = new Date().toISOString();
+      logActivity(db, { kind: "status_changed", title: `${invoice.number}: ${action}`, detail: `PayPal ${result.reference} · ${record.preview.message}`, invoiceId: id });
+    });
+    if (action === "record-payment") {
+      return applyCheck(id, classifyPaypalInvoice({ ...result.invoice, transactionId: result.invoice.transactionId || result.reference }, invoice.amount, invoice.dueDate, new Date()));
+    }
+    return invoice;
+  });
+}
+
 export async function chaseUnpaid(origin = appOrigin()): Promise<{ reminded: PaypalInvoice[]; skipped: string[] }> {
   void origin;
   throw new Error("Bulk sends are disabled. Preview and confirm one exact invoice at a time.");
@@ -287,7 +316,7 @@ export async function chaseUnpaid(origin = appOrigin()): Promise<{ reminded: Pay
 export async function syncInvoice(id: string): Promise<PaypalInvoice> {
   const current = findInvoice(id);
   if (!current) throw new Error("That invoice is gone.");
-  if (current.status === "paid" || !current.payment?.reference) return current;
+  if (!current.payment?.reference) return current;
   if (current.payment.network === "paypal-demo" && paypalMode() !== "demo") return current;
   if (current.payment.network === "paypal-sandbox" && paypalMode() !== "sandbox") return current;
   try {
@@ -295,6 +324,8 @@ export async function syncInvoice(id: string): Promise<PaypalInvoice> {
     updateDb((db) => {
       const invoice = must(db.invoices, id);
       invoice.paypalStatus = remote.status;
+      if (remote.amountRefunded !== undefined) invoice.amountRefunded = remote.amountRefunded;
+      if (remote.refundId) invoice.recordedRefundId = remote.refundId;
       if (invoice.status === "draft" && remote.status !== "DRAFT") invoice.status = "pending";
       if (invoice.payment) {
         invoice.payment.status = remote.status;
@@ -384,7 +415,7 @@ export function totals() {
   const invoices = modeInvoices(getDb().invoices, paypalMode()).filter((invoice) => !invoice.sample);
   return {
     outstanding: invoices.filter((invoice) => receivable(invoice) && invoice.status !== "expired").reduce((total, invoice) => total + balance(invoice), 0),
-    collected: invoices.filter((invoice) => invoice.status === "paid").reduce((total, invoice) => total + Number(invoice.amountReceived || invoice.amount), 0),
+    collected: invoices.reduce((total, invoice) => total + collectedAmount(invoice), 0),
     overdue: invoices.filter((invoice) => receivable(invoice) && invoice.status === "expired").reduce((total, invoice) => total + balance(invoice), 0),
     drafts: invoices.filter((invoice) => invoice.status === "draft").length,
   };

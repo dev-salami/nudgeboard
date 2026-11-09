@@ -1,5 +1,5 @@
 import { cancelConfirmation } from "@/lib/confirmations";
-import { remindInvoice, sendExisting, writeoffInvoice } from "@/lib/invoices";
+import { remindInvoice, sendExisting, writeoffInvoice, recordInvoiceMoney } from "@/lib/invoices";
 import { getDb } from "@/lib/store";
 import type { PaypalInvoice } from "@/lib/types";
 import { withJudgeDemo } from "@/lib/judge-demo-context";
@@ -35,6 +35,7 @@ async function decide(request: Request, context: { params: Promise<{ id: string 
     const result: { invoice: PaypalInvoice; refusal?: string } = record.action === "send"
       ? { invoice: await sendExisting(record.invoiceId, record.origin, record.id) }
       : record.action === "writeoff" ? { invoice: await writeoffInvoice(record.invoiceId, record.origin, record.id) }
+      : record.action === "record-payment" || record.action === "record-refund" ? { invoice: await recordInvoiceMoney(record.invoiceId, record.action, record.origin, record.id) }
       : await remindInvoice(record.invoiceId, record.origin, record.id);
     return Response.json({ ...result, confirmation: record, message: result.refusal || "Confirmed action completed. Payment status is not inferred from sending." });
   } catch (error) {

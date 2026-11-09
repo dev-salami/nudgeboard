@@ -3,28 +3,34 @@ import { appOrigin, paypalEnvironment, paypalMode } from "./env";
 import type { ReminderTone } from "./ai";
 import { getDb, updateDb } from "./store";
 import type { ActionConfirmation, PaypalInvoice } from "./types";
+import { paypalAmount } from "./money";
+import { balance } from "./ledger";
 
 // Send previews stay synchronous and local. Only the async reminder helper loads AI.
 export function actionSnapshot(invoice: PaypalInvoice): string {
   return JSON.stringify([invoice.id, invoice.number, invoice.clientName, invoice.clientEmail,
     invoice.amount, invoice.currency, invoice.description, invoice.dueDate, invoice.status,
     invoice.payment?.reference, invoice.payment?.network, invoice.payment?.status, invoice.paypalStatus,
-    invoice.amountReceived, invoice.paidAt, invoice.receiptId, invoice.lastRemindedAt,
+    invoice.amountReceived, invoice.paidAt, invoice.receiptId, invoice.lastRemindedAt, invoice.amountRefunded, invoice.recordedPaymentId, invoice.recordedRefundId,
     getDb().merchant]);
 }
 
 export function assertEligible(invoice: PaypalInvoice, action: ActionConfirmation["action"]) {
   if (paypalMode() === "sandbox") paypalEnvironment();
-  if (invoice.paidAt || invoice.receiptId) throw new Error("No send: this invoice has payment evidence or a receipt.");
   if (invoice.payment && invoice.payment.network !== `paypal-${paypalMode()}`) throw new Error("Invoice mode differs from the current PayPal mode.");
+  if (action === "record-refund") {
+    if (!invoice.payment?.reference || !["paid", "underpaid"].includes(invoice.status) || !["PAID", "MARKED_AS_PAID", "PARTIALLY_PAID", "PARTIALLY_REFUNDED"].includes(invoice.paypalStatus || "") || Number(invoice.amountReceived || 0) <= Number(invoice.amountRefunded || 0)) throw new Error("No refundable recorded payment.");
+    return;
+  }
+  if (invoice.paidAt || invoice.receiptId) throw new Error("No send: this invoice has payment evidence or a receipt.");
   if (action === "send" && invoice.status !== "draft") throw new Error("Only a draft can be sent.");
   if (action === "send" && invoice.payment?.network === "paypal-sandbox"
     && !getDb().confirmations.some((row) => row.invoiceId === invoice.id && row.action === "send" && row.state === "executing" && row.remoteReference === invoice.payment?.reference)) {
     throw new Error("Legacy remote draft contents cannot be verified against this preview. Operator reconciliation is required; this workflow sends confirmed local drafts only.");
   }
-  if ((action === "remind" || action === "writeoff") && !["pending", "expired", "underpaid"].includes(invoice.status)) throw new Error("No reminder: invoice is already paid or still a draft.");
-  if (["PAID", "MARKED_AS_PAID", "CANCELLED", "REFUNDED", "PAYMENT_PENDING"].includes(invoice.paypalStatus || "")) throw new Error("No send: PayPal payment state is not eligible.");
-  if ((action === "remind" || action === "writeoff") && (!invoice.payment?.reference || invoice.payment.status === "DRAFT" || invoice.paypalStatus === "DRAFT")) throw new Error("No reminder: this invoice has not been sent.");
+  if (action !== "send" && !["pending", "expired", "underpaid"].includes(invoice.status)) throw new Error("No reminder: invoice is already paid or still a draft.");
+  if (["PAID", "MARKED_AS_PAID", "CANCELLED", "REFUNDED", "PARTIALLY_REFUNDED", "MARKED_AS_REFUNDED", "PAYMENT_PENDING"].includes(invoice.paypalStatus || "")) throw new Error("No send: PayPal payment state is not eligible.");
+  if (action !== "send" && (!invoice.payment?.reference || invoice.payment.status === "DRAFT" || invoice.paypalStatus === "DRAFT")) throw new Error("No reminder: this invoice has not been sent.");
   if (paypalMode() === "sandbox" && !invoice.clientEmail) throw new Error("Add a client email before preparing a send.");
 }
 
@@ -64,6 +70,20 @@ export function prepareWriteoffConfirmation(invoiceId: string, origin = appOrigi
   return saveConfirmation(invoice, "writeoff", origin, `Write off ${invoice.number}: cancel the remaining balance in PayPal.`);
 }
 
+export function prepareMoneyConfirmation(invoiceId: string, action: "record-payment" | "record-refund", input: import("./paypal-client").PaypalMoneyInput, origin = appOrigin()) {
+  const invoice = getDb().invoices.find((row) => row.id === invoiceId);
+  if (!invoice) throw new Error("Choose an exact invoice.");
+  assertEligible(invoice, action);
+  const amount = paypalAmount(input.amount);
+  if (!["CASH", "BANK_TRANSFER", "OTHER"].includes(input.method) || !/^\d{4}-\d{2}-\d{2}$/.test(input.date) || new Date(`${input.date}T00:00:00Z`).toISOString().slice(0, 10) !== input.date || input.date > new Date().toISOString().slice(0, 10)) throw new Error("Use a valid payment method and date, not in the future.");
+  const limit = action === "record-payment" ? balance(invoice) : Number(invoice.amountReceived || 0) - Number(invoice.amountRefunded || 0);
+  if (Number(amount) > limit) throw new Error("Amount exceeds the available balance.");
+  const moneyInput = { amount, date: input.date, method: input.method, note: String(input.note || "").trim().slice(0, 1000) };
+  const message = `${action === "record-payment" ? "Record external payment" : "Record external refund"}: ${amount} USD · ${moneyInput.method} · ${moneyInput.date}\n${moneyInput.note}\nThis records an already completed external transaction in PayPal; it does not transfer funds.`;
+  const record = saveConfirmation(invoice, action, origin, message);
+  return updateDb(() => { record.moneyInput = moneyInput; return record; });
+}
+
 function pendingConfirmation(invoiceId: string, action: ActionConfirmation["action"], origin: string, snapshot: string, tone?: ReminderTone) {
   return getDb().confirmations.find((row) => row.invoiceId === invoiceId && row.action === action && row.mode === paypalMode() && row.snapshot === snapshot && row.origin === origin && row.tone === tone && row.state === "pending" && Date.parse(row.expiresAt) > Date.now());
 }
@@ -74,7 +94,7 @@ function saveConfirmation(invoice: PaypalInvoice, action: ActionConfirmation["ac
   return updateDb((db) => {
     assertNotBlocked(invoiceId);
     const existing = pendingConfirmation(invoiceId, action, origin, snapshot, tone);
-    if (existing) return existing;
+    if (existing && existing.preview.message === message) return existing;
     // Only one pending preview per invoice. Changed/replaced previews cannot execute.
     for (const row of db.confirmations) if (row.invoiceId === invoiceId && row.state === "pending") row.state = "stale";
     const record: ActionConfirmation = { id: createId("confirm"), invoiceId, action, tone, mode: paypalMode(), snapshot, origin,

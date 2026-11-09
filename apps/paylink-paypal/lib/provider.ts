@@ -159,7 +159,7 @@ export function classifyPaypalInvoice(remote: PaypalRemoteInvoice, expected: str
       message: "PayPal recorded a partial payment.",
     };
   }
-  if (status === "CANCELLED" || status === "REFUNDED") {
+  if (["CANCELLED", "REFUNDED", "MARKED_AS_REFUNDED", "PARTIALLY_REFUNDED"].includes(status)) {
     return { status: "expired", explorerUrl: remote.recipientViewUrl, message: `PayPal status is ${status}.` };
   }
   if (status === "PAYMENT_PENDING") {

@@ -4,7 +4,7 @@ import { elapsedDays, payerHistory } from "./payer-history";
 
 export function isOpen(invoice: PaypalInvoice) {
   return ["pending", "expired", "underpaid"].includes(invoice.status) && !invoice.paidAt && !invoice.receiptId
-    && !["DRAFT", "PAID", "MARKED_AS_PAID", "CANCELLED", "REFUNDED", "PAYMENT_PENDING"].includes(invoice.paypalStatus || "");
+    && !["DRAFT", "PAID", "MARKED_AS_PAID", "CANCELLED", "REFUNDED", "MARKED_AS_REFUNDED", "PARTIALLY_REFUNDED", "PAYMENT_PENDING"].includes(invoice.paypalStatus || "");
 }
 
 // Write off <= $25 only after 45 overdue days AND 45 days without movement.

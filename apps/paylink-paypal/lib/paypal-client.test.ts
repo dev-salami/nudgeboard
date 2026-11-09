@@ -16,6 +16,23 @@ const draft = {
 };
 
 describe("PayPal demo client", () => {
+  it("records partials, settlement, refunds and cancellation through the demo transport", async () => {
+    const client = createPaypalClient({ mode: "demo" });
+    const invoice = await client.createDraft(draft);
+    const input = { amount: "40.00", date: "2026-11-05", method: "BANK_TRANSFER" as const, note: "External reference" };
+    await expect(client.recordPayment(invoice.id, input)).rejects.toThrow();
+    await client.send(invoice.id);
+    const partial = await client.recordPayment(invoice.id, input);
+    expect(partial).toMatchObject({ reference: expect.stringMatching(/^DEMO-PAYMENT-/), invoice: { status: "PARTIALLY_PAID", amountPaid: "40.00" } });
+    expect((await client.recordPayment(invoice.id, { ...input, amount: "110" })).invoice.status).toBe("PAID");
+    expect((await client.recordRefund(invoice.id, input)).invoice).toMatchObject({ status: "PARTIALLY_REFUNDED", amountRefunded: "40.00" });
+    expect((await client.recordRefund(invoice.id, { ...input, amount: "110" })).invoice.status).toBe("REFUNDED");
+    await expect(client.recordPayment(invoice.id, input)).rejects.toThrow();
+    const cancel = await client.createDraft({ ...draft, localId: "cancel" });
+    await client.send(cancel.id); await client.cancel(cancel.id, "Write off");
+    expect((await client.get(cancel.id)).status).toBe("CANCELLED");
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it("creates, sends, reminds, and simulates a payment without credentials", async () => {
     const client = createPaypalClient({ mode: "demo" });
     const created = await client.createDraft(draft);
@@ -41,6 +58,34 @@ describe("PayPal demo client", () => {
 });
 
 describe("PayPal sandbox client", () => {
+  it("posts remind, cancel, payment and refund only to sandbox and keeps returned evidence", async () => {
+    const calls: string[] = [];
+    const fetchImpl = vi.fn<typeof fetch>(async (url, init) => {
+      expect(new URL(String(url)).origin).toBe("https://api-m.sandbox.paypal.com");
+      const path = new URL(String(url)).pathname;
+      calls.push(`${init?.method} ${path}`);
+      if (path.endsWith("/token")) return Response.json({ access_token: "mock", expires_in: 300 });
+      if (path.endsWith("/payments")) {
+        expect(JSON.parse(String(init?.body))).toMatchObject({ payment_date: "2026-11-05", method: "BANK_TRANSFER", amount: { currency_code: "USD", value: "40.00" } });
+        return Response.json({ payment_id: "PAYMENT-EVIDENCE" });
+      }
+      if (path.endsWith("/refunds")) return Response.json({ refund_id: "REFUND-EVIDENCE" });
+      if (init?.method === "GET") return Response.json({ id: "INV2-X", status: "PARTIALLY_PAID", payments: { paid_amount: { value: "40.00" }, transactions: [{ transaction_id: "REMOTE-TX" }] } });
+      return new Response(null, { status: 204 });
+    });
+    const client = createPaypalClient({ mode: "sandbox", clientId: "mock", clientSecret: "mock", fetchImpl });
+    const input = { amount: "40", date: "2026-11-05", method: "BANK_TRANSFER" as const, note: "External" };
+    await client.remind("INV2-X", "Previewed reminder");
+    await client.cancel("INV2-X", "Previewed writeoff");
+    expect(await client.recordPayment("INV2-X", input)).toMatchObject({ reference: "PAYMENT-EVIDENCE", invoice: { amountPaid: "40.00", transactionId: "REMOTE-TX" } });
+    expect((await client.recordRefund("INV2-X", input)).reference).toBe("REFUND-EVIDENCE");
+    expect(calls).toEqual(expect.arrayContaining(["POST /v2/invoicing/invoices/INV2-X/remind", "POST /v2/invoicing/invoices/INV2-X/cancel", "POST /v2/invoicing/invoices/INV2-X/payments", "POST /v2/invoicing/invoices/INV2-X/refunds"]));
+  });
+  it("never fabricates evidence when a record-payment response has no id", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async (url) => Response.json(String(url).endsWith("/token") ? { access_token: "mock", expires_in: 300 } : {}));
+    const client = createPaypalClient({ mode: "sandbox", clientId: "mock", clientSecret: "mock", fetchImpl });
+    await expect(client.recordPayment("INV2-X", { amount: "10", date: "2026-11-05", method: "CASH", note: "External" })).rejects.toThrow(/evidence/);
+  });
   it("rejects live/custom hosts before making a request", () => {
     for (const apiBase of ["https://api-m.paypal.com", "https://example.com", "https://api-m.sandbox.paypal.com@evil.test"]) {
       expect(() => createPaypalClient({ mode: "sandbox", apiBase })).toThrow(/sandbox/);

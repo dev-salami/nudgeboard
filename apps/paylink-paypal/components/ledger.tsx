@@ -24,13 +24,15 @@ export function Ledger({ rows, demo = false }: { rows: PaypalInvoice[]; demo?: b
           {rows.map((invoice) => (
             <tr key={invoice.id}>
               <td>
-                <Link href={demo ? "/dashboard?books=demo" : `/invoices/${invoice.id}`}>{invoice.clientName}</Link>
+                <Link href={`/invoices/${invoice.id}${demo ? "?books=demo" : ""}`}>{invoice.clientName}</Link>
                 {invoice.sample ? <span className="pill ml-2">Judge demo</span> : null}
                 <span className="block text-xs text-muted">{invoice.description}</span>
               </td>
               <td className="text-muted">{invoice.number}</td>
               <td>
                 <Money value={invoice.amount} />
+                {invoice.amountReceived ? <span className="block text-xs text-muted">Received {invoice.amountReceived} USD</span> : null}
+                {invoice.amountRefunded ? <span className="block text-xs text-muted">Refunded {invoice.amountRefunded} USD</span> : null}
               </td>
               <td className="text-muted">{invoice.payment?.reference ?? "—"}</td>
               <td>

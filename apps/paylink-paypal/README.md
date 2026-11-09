@@ -14,6 +14,10 @@ Application code is licensed under MIT. See [LICENSE](./LICENSE). No API keys be
 
 ## Run
 
+### PayPal Agent Toolkit fit
+
+We retain the sandbox-only HTTP client rather than adding a runtime `@paypal/agent-toolkit` agent or `@paypal/mcp` sidecar that could bypass approval. We call the same Invoicing v2 and webhook-verification endpoints documented by those tools, behind our explicit confirmation gate. Equivalent tools include `send_invoice_reminder`, `cancel_sent_invoice`, `record_payment_for_invoice`, and `record_refund_for_invoice`. Recorded payments and refunds document external transactions; they do not execute transfers. No toolkit dependency or autonomous payment permission is installed.
+
 From the monorepo root:
 
 ```bash

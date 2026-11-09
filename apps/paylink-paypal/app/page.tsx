@@ -114,7 +114,7 @@ export default function HomePage() {
                   {rows.map((row) => (
                     <tr key={row.id}>
                       <td>{row.clientName}</td>
-                      <td className="text-muted"><Link href={demo ? "/dashboard?books=demo" : `/invoices/${row.id}`}>{row.number}</Link></td>
+                      <td className="text-muted"><Link href={`/invoices/${row.id}${demo ? "?books=demo" : ""}`}>{row.number}</Link></td>
                       <td><Money value={row.amount} /></td>
                       <td><StatusPill status={row.status} /></td>
                     </tr>

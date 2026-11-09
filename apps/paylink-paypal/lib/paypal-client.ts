@@ -25,7 +25,12 @@ export interface PaypalRemoteInvoice {
   invoicerViewUrl?: string;
   transactionId?: string;
   amountPaid?: string;
+  amountRefunded?: string;
+  refundId?: string;
 }
+
+export interface PaypalMoneyInput { amount: string; date: string; method: "CASH" | "BANK_TRANSFER" | "OTHER"; note: string }
+export interface PaypalMoneyResult { reference: string; invoice: PaypalRemoteInvoice }
 
 export interface PaypalWebhookHeaders {
   authAlgo?: string;
@@ -42,6 +47,8 @@ export interface PaypalTransport {
   get(id: string): Promise<PaypalRemoteInvoice>;
   remind(id: string, note: string): Promise<void>;
   cancel(id: string, note: string): Promise<void>;
+  recordPayment(id: string, input: PaypalMoneyInput): Promise<PaypalMoneyResult>;
+  recordRefund(id: string, input: PaypalMoneyInput): Promise<PaypalMoneyResult>;
   verifyWebhook(event: unknown, headers: PaypalWebhookHeaders): Promise<{ ok: boolean; reason: string }>;
   simulatePayment?(id: string, transactionId: string, amount: string): void;
 }
@@ -116,6 +123,28 @@ function createDemoClient(): PaypalTransport {
       const record = must(id);
       if (!["SENT", "UNPAID", "PARTIALLY_PAID"].includes(record.status)) throw new Error("Invoice cannot be cancelled.");
       record.status = "CANCELLED";
+    },
+    async recordPayment(id, input) {
+      const record = must(id);
+      if (!["SENT", "UNPAID", "PARTIALLY_PAID"].includes(record.status)) throw new Error("Invoice cannot receive a recorded payment.");
+      const amount = Number(paypalAmount(input.amount));
+      const total = Number(record.amountPaid || 0) + amount;
+      if (total > Number(record.input!.amount)) throw new Error("Payment exceeds remaining balance.");
+      record.amountPaid = total.toFixed(2);
+      record.transactionId = `DEMO-PAYMENT-${crypto.randomUUID()}`;
+      record.status = total >= Number(record.input!.amount) ? "PAID" : "PARTIALLY_PAID";
+      return { reference: record.transactionId, invoice: publicView(record) };
+    },
+    async recordRefund(id, input) {
+      const record = must(id);
+      if (!["PAID", "PARTIALLY_PAID", "PARTIALLY_REFUNDED"].includes(record.status)) throw new Error("Invoice has no refundable payment.");
+      const amount = Number(paypalAmount(input.amount));
+      const total = Number(record.amountRefunded || 0) + amount;
+      if (total > Number(record.amountPaid || 0)) throw new Error("Refund exceeds received payment.");
+      record.amountRefunded = total.toFixed(2);
+      record.refundId = `DEMO-REFUND-${crypto.randomUUID()}`;
+      record.status = total >= Number(record.amountPaid) ? "REFUNDED" : "PARTIALLY_REFUNDED";
+      return { reference: record.refundId, invoice: publicView(record) };
     },
     simulatePayment(id, transactionId, amount) {
       const record = must(id);
@@ -247,6 +276,22 @@ function createSandboxClient(options: PaypalClientOptions): PaypalTransport {
         method: "POST", body: JSON.stringify({ note, send_to_recipient: true, send_to_invoicer: false }),
       });
     },
+    async recordPayment(id, input) {
+      const { json } = await call(`/v2/invoicing/invoices/${encodeURIComponent(id)}/payments`, {
+        method: "POST", body: JSON.stringify({ payment_date: input.date, method: input.method, amount: { currency_code: "USD", value: paypalAmount(input.amount) }, note: input.note }),
+      });
+      const reference = stringField(asRecord(json), "payment_id");
+      if (!reference) throw new Error("PayPal did not return recorded-payment evidence. Reconcile before retrying.");
+      return { reference, invoice: await this.get(id) };
+    },
+    async recordRefund(id, input) {
+      const { json } = await call(`/v2/invoicing/invoices/${encodeURIComponent(id)}/refunds`, {
+        method: "POST", body: JSON.stringify({ refund_date: input.date, method: input.method, amount: { currency_code: "USD", value: paypalAmount(input.amount) }, note: input.note }),
+      });
+      const reference = stringField(asRecord(json), "refund_id");
+      if (!reference) throw new Error("PayPal did not return recorded-refund evidence. Reconcile before retrying.");
+      return { reference, invoice: await this.get(id) };
+    },
   };
 }
 
@@ -297,15 +342,19 @@ export function readInvoice(json: unknown): PaypalRemoteInvoice {
   const metadata = asRecord(detail.metadata);
   const payments = asRecord(record.payments);
   const transactions = Array.isArray(payments.transactions) ? payments.transactions : [];
-  const paid = transactions.map(asRecord).find((item) => stringField(item, "transaction_id"));
+   const paid = transactions.map(asRecord).find((item) => stringField(item, "transaction_id") || stringField(item, "payment_id"));
   const paidAmount = asRecord(payments.paid_amount ?? paid?.amount);
+  const refunds = asRecord(record.refunds);
+  const refundTransactions = Array.isArray(refunds.transactions) ? refunds.transactions.map(asRecord) : [];
   return {
     id,
     status: stringField(record, "status") || "DRAFT",
     recipientViewUrl: sandboxViewUrl(stringField(metadata, "recipient_view_url")),
     invoicerViewUrl: sandboxViewUrl(stringField(metadata, "invoicer_view_url")),
-    transactionId: paid ? stringField(paid, "transaction_id") || undefined : undefined,
+    transactionId: paid ? stringField(paid, "transaction_id") || stringField(paid, "payment_id") || undefined : undefined,
     amountPaid: stringField(paidAmount, "value") || undefined,
+    amountRefunded: stringField(asRecord(refunds.refund_amount ?? refunds.refunded_amount), "value") || undefined,
+    refundId: refundTransactions[0] ? stringField(refundTransactions[0], "refund_id") || stringField(refundTransactions[0], "transaction_id") || undefined : undefined,
   };
 }
 
@@ -358,6 +407,8 @@ function publicView(record: DemoRecord): PaypalRemoteInvoice {
     invoicerViewUrl: record.invoicerViewUrl,
     transactionId: record.transactionId,
     amountPaid: record.amountPaid,
+    amountRefunded: record.amountRefunded,
+    refundId: record.refundId,
   };
 }
 

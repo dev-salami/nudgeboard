@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Delta, Money } from "./keel";
 import { Ledger } from "./ledger";
 import type { PaypalInvoice } from "@/lib/types";
-import { balance, receivable } from "@/lib/ledger";
+import { balance, collectedAmount, receivable } from "@/lib/ledger";
 import { isOpen } from "@/lib/collections-queue";
 import { JUDGE_DEMO_LABEL } from "@/lib/judge-demo-seed";
 
@@ -35,7 +35,7 @@ export function DashboardLive({ initial, demo = false }: { initial: PaypalInvoic
   const outstanding = rows
     .filter((invoice) => eligible(invoice) && invoice.status !== "expired")
     .reduce((total, invoice) => total + balance(invoice), 0);
-  const collected = rows.filter((invoice) => (demo || !invoice.sample) && invoice.status === "paid" && invoice.paypalStatus !== "REFUNDED").reduce((total, invoice) => total + Number(invoice.amountReceived || invoice.amount), 0);
+  const collected = rows.filter((invoice) => demo || !invoice.sample).reduce((total, invoice) => total + collectedAmount(invoice), 0);
   const overdue = rows.filter((invoice) => eligible(invoice) && invoice.status === "expired").reduce((total, invoice) => total + balance(invoice), 0);
   const openCount = rows.filter((invoice) => eligible(invoice) && invoice.status !== "expired").length;
   const paidCount = rows.filter((invoice) => (demo || !invoice.sample) && invoice.status === "paid" && invoice.paypalStatus !== "REFUNDED").length;
