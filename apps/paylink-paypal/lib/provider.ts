@@ -45,8 +45,10 @@ export interface PaypalRail extends PaymentProvider {
 
 let cached: PaypalRail | null = null;
 let cachedMode = "";
+let judgeRail: PaypalRail | null = null;
 
 export function getPaypalRail(): PaypalRail {
+  if (inJudgeDemo()) return judgeRail ??= createPaypalRail(createPaypalClient({ mode: "demo" }));
   const mode = paypalMode();
   if (!cached || cachedMode !== mode) {
     cached = createPaypalRail(createPaypalClient({
@@ -62,6 +64,7 @@ export function getPaypalRail(): PaypalRail {
 }
 
 export function resetPaypalRail(): void {
+  judgeRail = null;
   cached = null;
   cachedMode = "";
 }
@@ -168,3 +171,4 @@ export function classifyPaypalInvoice(remote: PaypalRemoteInvoice, expected: str
   return { status: "pending", explorerUrl: remote.recipientViewUrl, message: `PayPal status is ${status}.` };
 }
 import { PRODUCT_NAME } from "./brand";
+import { inJudgeDemo } from "./judge-demo-context";

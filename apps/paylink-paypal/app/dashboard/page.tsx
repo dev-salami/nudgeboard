@@ -5,35 +5,26 @@ import { DashboardLive } from "@/components/dashboard-live";
 import { Shell } from "@/components/shell";
 import { paypalMode } from "@/lib/env";
 import { formatUsd } from "@/lib/money";
-import { modeInvoices } from "@/lib/ledger";
 import { getDb } from "@/lib/store";
 import type { PaypalInvoice } from "@/lib/types";
+import { booksView, collectionDays } from "@/lib/books-view";
+import { JUDGE_DEMO_LABEL } from "@/lib/judge-demo-seed";
 
 export const dynamic = "force-dynamic";
 
 function dailyBars(invoices: PaypalInvoice[]): Bar[] {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const bars: Bar[] = [];
-  for (let i = 23; i >= 0; i -= 1) {
-    const start = today.getTime() - i * 86400000;
-    const end = start + 86400000;
-    const paid = invoices
-      .filter((invoice) => invoice.status === "paid" && invoice.paidAt && new Date(invoice.paidAt).getTime() >= start && new Date(invoice.paidAt).getTime() < end)
-      .reduce((total, invoice) => total + Number(invoice.amountReceived || invoice.amount), 0);
-    bars.push({ value: paid, on: paid > 0 });
-  }
+  const bars: Bar[] = collectionDays(invoices).map((value) => ({ value, on: value > 0 }));
   const best = bars.reduce((winner, bar, index) => (bar.value > (bars[winner]?.value ?? 0) ? index : winner), 0);
   const chosen = bars[best];
   if (chosen && chosen.value > 0) chosen.label = { top: formatUsd(chosen.value), sub: "Received" };
   return bars;
 }
 
-export default function DashboardPage() {
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ books?: string }> }) {
   const db = getDb();
   const mode = paypalMode();
-  const rows = modeInvoices(db.invoices, mode);
-  const real = rows.filter((invoice) => !invoice.sample && invoice.status !== "draft" && !["CANCELLED", "REFUNDED"].includes(invoice.paypalStatus || ""));
+  const { rows, demo } = booksView(db.invoices, mode, (await searchParams).books);
+  const real = rows.filter((invoice) => invoice.status !== "draft" && !["CANCELLED", "REFUNDED"].includes(invoice.paypalStatus || ""));
   const billed = real.reduce((total, invoice) => total + Number(invoice.amount), 0);
   const collected = real.filter((invoice) => invoice.status === "paid").reduce((total, invoice) => total + Number(invoice.amountReceived || invoice.amount), 0);
   const ratio = billed > 0 ? collected / billed : 0;
@@ -41,15 +32,16 @@ export default function DashboardPage() {
   return (
     <Shell merchantName={db.merchant.name}>
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-        <p className="text-sm text-muted">{mode === "sandbox" ? "PayPal sandbox" : "Demo mode — PayPal credentials are unset"}</p>
+        <p className="text-sm text-muted">{demo ? JUDGE_DEMO_LABEL : mode === "sandbox" ? "PayPal sandbox" : "Demo mode — simulated checkout"}</p>
+        <Link href={demo ? "/dashboard?books=sandbox" : "/dashboard?books=demo"} className="btn btn-ghost">{demo ? "View sandbox books" : "View judge demo"}</Link>
         <Link href="/chat" className="btn btn-primary px-5">+ New invoice</Link>
       </div>
-      <CollectionsQueue invoices={rows} />
-      <DashboardLive initial={rows} />
+      <CollectionsQueue key={`${demo}`} invoices={rows} demo={demo} />
+      <DashboardLive key={`${demo}`} initial={rows} demo={demo} />
       <section className="mt-3 grid gap-3 lg:grid-cols-[1.6fr_1fr]">
         <article className="card p-6">
           <h2 className="text-xl">Collections, last 24 days</h2>
-          <p className="t-small text-muted">Mint bars are USD PayPal has marked paid.</p>
+          <p className="t-small text-muted">{demo ? JUDGE_DEMO_LABEL : "Mint bars are USD PayPal has marked paid."}</p>
           <div className="mt-6">
             <BarStrip bars={dailyBars(real)} />
           </div>

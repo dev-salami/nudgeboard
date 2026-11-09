@@ -37,6 +37,9 @@ export interface PaypalInvoice {
   amountReceived?: string;
   receiptId?: string;
   sample?: boolean;
+  source?: "judge-demo";
+  lastPaymentAt?: string;
+  amountRefunded?: string;
   channel?: "agent" | "email" | "whatsapp" | "manual";
   paypalStatus?: string;
   lastRemindedAt?: string;

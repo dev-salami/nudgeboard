@@ -3,8 +3,18 @@ import path from "node:path";
 import { addDays, createId, isoDate, type ActivityEvent } from "@181hacks/paylink-core";
 import { dataDir, merchantProfile, paypalMode } from "./env";
 import type { Database, PaypalInvoice } from "./types";
+import { inJudgeDemo } from "./judge-demo-context";
+import { judgeDemoInvoices } from "./judge-demo-seed";
 
 const memory = { current: null as Database | null };
+let judgeDb: Database | null = null;
+
+export function getJudgeDemoDb(): Database {
+  if (!judgeDb) {
+    judgeDb = { ...emptyDb(), merchant: { name: "Demo Studio", city: "Demo", email: "merchant@studio.example" }, invoices: judgeDemoInvoices(), seeded: true };
+  }
+  return judgeDb;
+}
 
 function directory(): string {
   return dataDir() || path.join(process.cwd(), "data");
@@ -63,6 +73,7 @@ function writeToDisk(db: Database): void {
 }
 
 export function getDb(): Database {
+  if (inJudgeDemo()) return getJudgeDemoDb();
   if (!memory.current) {
     memory.current = readFromDisk();
     if (!memory.current.seeded) {
@@ -77,17 +88,19 @@ export function updateDb<T>(mutate: (db: Database) => T): T {
   const db = getDb();
   const result = mutate(db);
   memory.current = db;
-  writeToDisk(db);
+  if (!inJudgeDemo()) writeToDisk(db);
   return result;
 }
 
 export function resetStore(): Database {
+  judgeDb = null;
   memory.current = seed(emptyDb());
   writeToDisk(memory.current);
   return memory.current;
 }
 
 export function blankStore(): Database {
+  judgeDb = null;
   memory.current = emptyDb();
   memory.current.seeded = true;
   writeToDisk(memory.current);
@@ -175,7 +188,7 @@ function seed(db: Database): Database {
     createdAt: paidAt,
     updatedAt: paidAt,
   };
-  db.invoices = [pending, paid];
+  db.invoices = judgeDemoInvoices(now);
   db.receipts = [
     {
       id: "rcp_demo_harbour",

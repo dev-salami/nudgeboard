@@ -6,7 +6,7 @@ import type { ActionConfirmation, PaypalInvoice } from "@/lib/types";
 
 type Prepared = { invoiceId: string; proposal?: { reason: string; action: string }; confirmation?: ActionConfirmation; error?: string; result?: string };
 
-export function CollectionsQueue({ invoices }: { invoices: PaypalInvoice[] }) {
+export function CollectionsQueue({ invoices, demo = false }: { invoices: PaypalInvoice[]; demo?: boolean }) {
   const queue = collectionsQueue(invoices);
   const [selected, setSelected] = useState(queue.map((row) => row.invoiceId));
   const [prepared, setPrepared] = useState<Prepared[]>([]);
@@ -15,7 +15,7 @@ export function CollectionsQueue({ invoices }: { invoices: PaypalInvoice[] }) {
   async function approve() {
     setBusy(true); setError("");
     try {
-      const response = await fetch("/api/collections", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ invoiceIds: selected }) });
+      const response = await fetch(`/api/collections${demo ? "?books=demo" : ""}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ invoiceIds: selected }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
       setPrepared(data.results);
@@ -27,7 +27,7 @@ export function CollectionsQueue({ invoices }: { invoices: PaypalInvoice[] }) {
     for (const row of prepared.filter((row) => row.confirmation?.state === "pending" && !row.result)) {
       const c = row.confirmation!;
       try {
-        const response = await fetch(`/api/confirmations/${c.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision: "confirm", invoiceId: c.invoiceId, action: c.action }) });
+        const response = await fetch(`/api/confirmations/${c.id}${demo ? "?books=demo" : ""}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision: "confirm", invoiceId: c.invoiceId, action: c.action }) });
         const data = await response.json();
         row.result = data.error || data.refusal || data.message;
         c.state = data.confirmation?.state || "uncertain";

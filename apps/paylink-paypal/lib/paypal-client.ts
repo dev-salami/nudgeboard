@@ -1,5 +1,6 @@
 import { paypalAmount } from "./money";
 import { PRODUCT_NAME } from "./brand";
+import { judgeDemoInvoices } from "./judge-demo-seed";
 import { paypalInvoiceId, splitName } from "./names";
 
 export interface PaypalDraftInput {
@@ -65,6 +66,11 @@ export function createPaypalClient(options: PaypalClientOptions): PaypalTranspor
 
 function createDemoClient(): PaypalTransport {
   const records = new Map<string, DemoRecord>();
+  for (const invoice of judgeDemoInvoices()) records.set(invoice.payment!.reference, {
+    id: invoice.payment!.reference, status: invoice.paypalStatus!, amountPaid: invoice.amountReceived, transactionId: invoice.txSignature,
+    input: { invoiceNumber: invoice.number, localId: invoice.id, amount: invoice.amount, description: invoice.description, dueDate: invoice.dueDate,
+      invoiceDate: invoice.createdAt.slice(0, 10), clientName: invoice.clientName, merchantName: "Demo Studio", merchantEmail: "merchant@studio.example" },
+  });
 
   function must(id: string): DemoRecord {
     const found = records.get(id);

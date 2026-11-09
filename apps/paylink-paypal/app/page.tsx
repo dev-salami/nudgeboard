@@ -4,8 +4,9 @@ import { MarbleMark, Money } from "@/components/keel";
 import { StatusPill } from "@/components/status-pill";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { paypalMode } from "@/lib/env";
-import { modeInvoices } from "@/lib/ledger";
 import { getDb } from "@/lib/store";
+import { booksView } from "@/lib/books-view";
+import { JUDGE_DEMO_LABEL } from "@/lib/judge-demo-seed";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ const steps = [
 
 export default function HomePage() {
   const mode = paypalMode();
-  const rows = modeInvoices(getDb().invoices, mode).filter((invoice) => !invoice.sample);
+  const { rows, demo } = booksView(getDb().invoices, mode);
 
   return (
     <div className="min-h-screen bg-bg">
@@ -96,7 +97,7 @@ export default function HomePage() {
             <p className="text-lg">Invoices</p>
             <Link href="/inbox" className="text-sm text-muted">Ingest a request ↗</Link>
           </div>
-          <p className="px-3 pb-3 text-sm text-muted">{mode === "sandbox" ? "PayPal sandbox" : "Demo mode — simulated checkout"}</p>
+          <p className="px-3 pb-3 text-sm text-muted">{demo ? JUDGE_DEMO_LABEL : mode === "sandbox" ? "PayPal sandbox" : "Demo mode — simulated checkout"} · <Link href={`/dashboard?books=${demo ? "sandbox" : "demo"}`}>{demo ? "View sandbox books" : "View judge demo"}</Link></p>
           {rows.length === 0 ? (
             <div className="px-3 py-8">
               <p className="text-lg">No invoices yet.</p>
@@ -113,7 +114,7 @@ export default function HomePage() {
                   {rows.map((row) => (
                     <tr key={row.id}>
                       <td>{row.clientName}</td>
-                      <td className="text-muted"><Link href={`/invoices/${row.id}`}>{row.number}</Link></td>
+                      <td className="text-muted"><Link href={demo ? "/dashboard?books=demo" : `/invoices/${row.id}`}>{row.number}</Link></td>
                       <td><Money value={row.amount} /></td>
                       <td><StatusPill status={row.status} /></td>
                     </tr>
