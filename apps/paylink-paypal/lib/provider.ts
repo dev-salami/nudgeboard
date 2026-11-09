@@ -81,7 +81,7 @@ export function createPaypalRail(client: PaypalTransport): PaypalRail {
         invoiceDate: fields.invoiceDate || new Date().toISOString().slice(0, 10),
         clientName: fields.clientName || "Client",
         clientEmail: fields.clientEmail,
-        merchantName: fields.merchantName || "PayLink",
+        merchantName: fields.merchantName || PRODUCT_NAME,
         merchantEmail: fields.merchantEmail || "merchant@example.com",
         note: fields.note,
         payUrl: fields.payUrl,
@@ -167,3 +167,4 @@ export function classifyPaypalInvoice(remote: PaypalRemoteInvoice, expected: str
   }
   return { status: "pending", explorerUrl: remote.recipientViewUrl, message: `PayPal status is ${status}.` };
 }
+import { PRODUCT_NAME } from "./brand";

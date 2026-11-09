@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CollectionsQueue } from "@/components/collections-queue";
 import { ArcGauge, BarStrip, type Bar } from "@/components/keel";
 import { DashboardLive } from "@/components/dashboard-live";
 import { Shell } from "@/components/shell";
@@ -43,6 +44,7 @@ export default function DashboardPage() {
         <p className="text-sm text-muted">{mode === "sandbox" ? "PayPal sandbox" : "Demo mode — PayPal credentials are unset"}</p>
         <Link href="/chat" className="btn btn-primary px-5">+ New invoice</Link>
       </div>
+      <CollectionsQueue invoices={rows} />
       <DashboardLive initial={rows} />
       <section className="mt-3 grid gap-3 lg:grid-cols-[1.6fr_1fr]">
         <article className="card p-6">

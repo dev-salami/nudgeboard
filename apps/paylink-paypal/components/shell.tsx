@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ThemeToggle } from "./theme-toggle";
+import { PRODUCT_NAME, PRODUCT_MARK } from "@/lib/brand";
 
 const tabs = [
-  { href: "/dashboard", label: "Overview", match: (path: string) => path === "/dashboard" },
+  { href: "/dashboard", label: "Queue", match: (path: string) => path === "/dashboard" },
   { href: "/dashboard?view=invoices", label: "Invoices", match: (path: string) => path.startsWith("/invoices") },
   { href: "/chat", label: "Agent", match: (path: string) => path.startsWith("/chat") },
   { href: "/inbox", label: "Inbox", match: (path: string) => path.startsWith("/inbox") },
@@ -22,8 +23,8 @@ export function Shell({ children, merchantName = "Amaka Studio" }: { children: R
   return (
     <div className="min-h-screen bg-bg">
       <header className="k-top">
-        <Link href="/" className="k-logo" aria-label="PayLink home">
-          P
+        <Link href="/dashboard" className="k-logo" aria-label={`${PRODUCT_NAME} home`}>
+          {PRODUCT_MARK}
         </Link>
         <span className="hidden flex-1 lg:block" />
         <nav className="k-tabs" aria-label="Sections">

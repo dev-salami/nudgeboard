@@ -39,6 +39,7 @@ export interface PaypalInvoice {
   sample?: boolean;
   channel?: "agent" | "email" | "whatsapp" | "manual";
   paypalStatus?: string;
+  lastRemindedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -86,7 +87,7 @@ export interface Database {
 export interface ActionConfirmation {
   id: string;
   invoiceId: string;
-  action: "send" | "remind";
+  action: "send" | "remind" | "writeoff";
   tone?: "friendly" | "firm" | "empathetic";
   mode: "demo" | "sandbox";
   snapshot: string;

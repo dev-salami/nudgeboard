@@ -257,7 +257,26 @@ async function dispatchReminder(query: string, origin: string, note: string): Pr
       });
     });
   }
+  updateDb(() => { invoice.lastRemindedAt = new Date().toISOString(); });
   return { invoice };
+}
+
+export async function writeoffInvoice(id: string, origin = appOrigin(), confirmationId?: string) {
+  return executeConfirmed(confirmationId, id, "writeoff", origin, async (record) => {
+    const invoice = must(getDb().invoices, id);
+    if (invoice.payment?.network === "paypal-sandbox") await syncInvoice(id);
+    if (invoice.paymentIssue === "rpc_down") throw new Error("PayPal status could not be verified.");
+    assertUnchanged(record, invoice);
+    await getPaypalRail().client.cancel(invoice.payment!.reference, record.preview.message);
+    return updateDb((db) => {
+      invoice.paypalStatus = "CANCELLED";
+      invoice.payment!.status = "CANCELLED";
+      invoice.status = "expired";
+      invoice.updatedAt = new Date().toISOString();
+      logActivity(db, { kind: "status_changed", title: `${invoice.number} cancelled in PayPal`, detail: record.preview.message, invoiceId: id });
+      return invoice;
+    });
+  });
 }
 
 export async function chaseUnpaid(origin = appOrigin()): Promise<{ reminded: PaypalInvoice[]; skipped: string[] }> {

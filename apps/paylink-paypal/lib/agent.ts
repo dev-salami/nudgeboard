@@ -14,7 +14,7 @@ import { demoMode, env, paypalMode } from "./env";
 import { formatUsd } from "./money";
 import type { ActionConfirmation, PaypalInvoice } from "./types";
 
-const SYSTEM_PROMPT = `You are PayLink, an invoicing and collections agent for a freelance studio.
+const SYSTEM_PROMPT = `You are ${PRODUCT_NAME}, an invoicing and collections agent for a freelance studio.
 The merchant bills clients in USD through PayPal. Turn plain sentences, pasted emails, and short chats into tool calls.
 Use create_invoice, check_status, list_unpaid, send_reminder, and generate_pdf.
 create_invoice ONLY prepares a local draft and structured preview. It NEVER sends.
@@ -264,3 +264,4 @@ function toolToIntent(name: AgentToolName, args: Record<string, string | boolean
   if (name === "send_reminder") return { type: "send_reminder", query: String(args.query ?? "") };
   return { type: "generate_pdf", query: String(args.query ?? "") };
 }
+import { PRODUCT_NAME } from "./brand";

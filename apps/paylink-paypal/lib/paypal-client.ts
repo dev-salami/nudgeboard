@@ -1,4 +1,5 @@
 import { paypalAmount } from "./money";
+import { PRODUCT_NAME } from "./brand";
 import { paypalInvoiceId, splitName } from "./names";
 
 export interface PaypalDraftInput {
@@ -39,6 +40,7 @@ export interface PaypalTransport {
   send(id: string, note?: string): Promise<PaypalRemoteInvoice>;
   get(id: string): Promise<PaypalRemoteInvoice>;
   remind(id: string, note: string): Promise<void>;
+  cancel(id: string, note: string): Promise<void>;
   verifyWebhook(event: unknown, headers: PaypalWebhookHeaders): Promise<{ ok: boolean; reason: string }>;
   simulatePayment?(id: string, transactionId: string, amount: string): void;
 }
@@ -103,6 +105,11 @@ function createDemoClient(): PaypalTransport {
       const parsed = readWebhook(event);
       if (!parsed) return { ok: false, reason: "Demo webhook needs an INVOICING.INVOICE event with an invoice id." };
       return { ok: true, reason: "Demo mode accepts well-formed invoicing events without a PayPal signature." };
+    },
+    async cancel(id) {
+      const record = must(id);
+      if (!["SENT", "UNPAID", "PARTIALLY_PAID"].includes(record.status)) throw new Error("Invoice cannot be cancelled.");
+      record.status = "CANCELLED";
     },
     simulatePayment(id, transactionId, amount) {
       const record = must(id);
@@ -183,7 +190,7 @@ function createSandboxClient(options: PaypalClientOptions): PaypalTransport {
         body: JSON.stringify({
           send_to_recipient: true,
           send_to_invoicer: false,
-          subject: "Invoice from PayLink",
+          subject: `Invoice from ${PRODUCT_NAME}`,
           note: note || "Please pay this invoice.",
         }),
       });
@@ -229,6 +236,11 @@ function createSandboxClient(options: PaypalClientOptions): PaypalTransport {
       if (asRecord(json).verification_status !== "SUCCESS") return { ok: false, reason: "PayPal rejected the webhook signature." };
       return { ok: true, reason: "PayPal verified the webhook signature." };
     },
+    async cancel(id, note) {
+      await call(`/v2/invoicing/invoices/${encodeURIComponent(id)}/cancel`, {
+        method: "POST", body: JSON.stringify({ note, send_to_recipient: true, send_to_invoicer: false }),
+      });
+    },
   };
 }
 
@@ -242,7 +254,7 @@ export function buildDraftBody(input: PaypalDraftInput): Record<string, unknown>
       reference: input.localId,
       invoice_date: input.invoiceDate,
       currency_code: "USD",
-      note: input.note || "Sent by PayLink.",
+      note: input.note || `Sent by ${PRODUCT_NAME}.`,
       payment_term: { term_type: "DUE_ON_DATE_SPECIFIED", due_date: input.dueDate },
     },
     invoicer: {

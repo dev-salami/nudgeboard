@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PRODUCT_NAME, PRODUCT_MARK, PRODUCT_DESCRIPTOR } from "@/lib/brand";
 import { MarbleMark, Money } from "@/components/keel";
 import { StatusPill } from "@/components/status-pill";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 const steps = [
   { n: "01", title: "A job lands", body: "Paste the email or the WhatsApp note. The agent reads the client, the amount, and the due date." },
-  { n: "02", title: "PayPal sends it", body: "PayLink creates a PayPal invoice and sends the hosted pay link. Sandbox when keys are set, demo when they are not." },
+  { n: "02", title: "PayPal sends it", body: `${PRODUCT_NAME} creates a PayPal invoice after your explicit confirmation. Sandbox when keys are set, demo when they are not.` },
   { n: "03", title: "It gets chased", body: "Open invoices get a reminder. When PayPal reports the capture, the receipt writes itself." },
 ];
 
@@ -22,8 +23,8 @@ export default function HomePage() {
     <div className="min-h-screen bg-bg">
       <header className="sticky top-3 z-30 mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 pt-3">
         <Link href="/" className="flex items-center gap-2 text-lg">
-          <span className="k-logo h-9 w-9 text-sm">P</span>
-          <span className="bold hidden sm:inline">PayLink</span>
+          <span className="k-logo h-9 w-9 text-sm">{PRODUCT_MARK}</span>
+          <span className="bold hidden sm:inline">{PRODUCT_NAME}</span>
         </Link>
         <nav className="hidden items-center gap-1 rounded-2xl bg-paper p-1.5 text-sm md:flex" aria-label="Site">
           <a className="rounded-xl px-4 py-2 hover:bg-elev" href="#product">Product</a>
@@ -48,7 +49,8 @@ export default function HomePage() {
             <li>Reminders go out, and the receipt lands when PayPal says paid</li>
           </ul>
           <div className="mt-9 flex flex-wrap gap-3">
-            <Link href="/chat" className="btn btn-primary px-6">Try the agent ↗</Link>
+            <Link href="/dashboard" className="btn btn-primary px-6">Open the collections queue ↗</Link>
+            <Link href="/chat" className="btn btn-ghost px-6">New invoice</Link>
           </div>
         </div>
         <div className="relative">
@@ -130,7 +132,7 @@ export default function HomePage() {
           </h2>
           <Link href="/chat" className="btn btn-mint mt-8 px-6">Start invoicing ↗</Link>
           <div className="mt-16 flex flex-wrap justify-between gap-4 border-t border-[#2c3240] pt-6 text-sm text-[#9a9ea8]">
-            <span>PayLink · PayPal sandbox invoicing for the AI hackathon</span>
+            <span>{PRODUCT_NAME} · {PRODUCT_DESCRIPTOR}</span>
             <span className="flex gap-5">
               <Link href="/dashboard">Books</Link>
               <Link href="/chat">Agent</Link>

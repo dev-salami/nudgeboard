@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
+import { PRODUCT_NAME, PRODUCT_DESCRIPTOR } from "@/lib/brand";
 
 const sans = localFont({
   src: "./fonts/InstrumentSans-Variable.ttf",
@@ -10,7 +11,7 @@ const sans = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "PayLink — PayPal invoicing agent",
+  title: `${PRODUCT_NAME} — ${PRODUCT_DESCRIPTOR}`,
   description: "An invoicing and collections agent for freelancers. Drafts, sends, and chases PayPal invoices.",
 };
 

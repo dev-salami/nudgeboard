@@ -1,5 +1,7 @@
 # PayLink PayPal
 
+The displayed product name is defined once in [`lib/brand.ts`](./lib/brand.ts); this heading mirrors `PRODUCT_NAME`.
+
 AI invoicing and collections agent for freelancers. It reads a job request and saves a **local USD draft and structured preview**. Only a separate explicit confirmation can create/send a sandbox invoice or send a reminder. The payer pays on a PayPal-hosted invoice. In demo mode checkout is simulated on our pay page.
 
 This is the PayPal entry in the private `181hacks` monorepo. It is aimed at Best Agentic Commerce and Best PayPal + AI. PayPal is the payment rail: create, send, remind, fetch, and webhook verification all go through the Invoicing API. There is no Solana, x402, or Nimiq code in this app.
@@ -8,7 +10,7 @@ The PayPal AI Hackathon opened on 1 October 2026. The shared invoicing core in `
 
 A self-contained public submission repo will be extracted from this app and `packages/paylink-core` later. Do not create that repository from this tree. This monorepo stays private. No Devpost registration and no PayPal developer account are part of this change.
 
-Application code is licensed under MIT. See [LICENSE](./LICENSE). No API keys belong in git. The UI self-hosts [Instrument Sans](./app/fonts/README.md) under the SIL Open Font License 1.1; Degular is not included.
+Application code is licensed under MIT. See [LICENSE](./LICENSE). No API keys belong in git. The UI self-hosts [Instrument Sans](./app/fonts/README.md) under the SIL Open Font License 1.1.
 
 ## Run
 

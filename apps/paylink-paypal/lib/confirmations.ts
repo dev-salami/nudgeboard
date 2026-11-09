@@ -9,7 +9,7 @@ export function actionSnapshot(invoice: PaypalInvoice): string {
   return JSON.stringify([invoice.id, invoice.number, invoice.clientName, invoice.clientEmail,
     invoice.amount, invoice.currency, invoice.description, invoice.dueDate, invoice.status,
     invoice.payment?.reference, invoice.payment?.network, invoice.payment?.status, invoice.paypalStatus,
-    invoice.amountReceived, invoice.paidAt, invoice.receiptId,
+    invoice.amountReceived, invoice.paidAt, invoice.receiptId, invoice.lastRemindedAt,
     getDb().merchant]);
 }
 
@@ -22,9 +22,9 @@ export function assertEligible(invoice: PaypalInvoice, action: ActionConfirmatio
     && !getDb().confirmations.some((row) => row.invoiceId === invoice.id && row.action === "send" && row.state === "executing" && row.remoteReference === invoice.payment?.reference)) {
     throw new Error("Legacy remote draft contents cannot be verified against this preview. Operator reconciliation is required; this workflow sends confirmed local drafts only.");
   }
-  if (action === "remind" && !["pending", "expired", "underpaid"].includes(invoice.status)) throw new Error("No reminder: invoice is already paid or still a draft.");
+  if ((action === "remind" || action === "writeoff") && !["pending", "expired", "underpaid"].includes(invoice.status)) throw new Error("No reminder: invoice is already paid or still a draft.");
   if (["PAID", "MARKED_AS_PAID", "CANCELLED", "REFUNDED", "PAYMENT_PENDING"].includes(invoice.paypalStatus || "")) throw new Error("No send: PayPal payment state is not eligible.");
-  if (action === "remind" && (!invoice.payment?.reference || invoice.payment.status === "DRAFT" || invoice.paypalStatus === "DRAFT")) throw new Error("No reminder: this invoice has not been sent.");
+  if ((action === "remind" || action === "writeoff") && (!invoice.payment?.reference || invoice.payment.status === "DRAFT" || invoice.paypalStatus === "DRAFT")) throw new Error("No reminder: this invoice has not been sent.");
   if (paypalMode() === "sandbox" && !invoice.clientEmail) throw new Error("Add a client email before preparing a send.");
 }
 
@@ -55,6 +55,13 @@ function assertNotBlocked(invoiceId: string) {
   if (getDb().confirmations.some((row) => row.invoiceId === invoiceId && ["executing", "uncertain"].includes(row.state))) {
     throw new Error("An earlier action may have reached PayPal. Operator review is required; do not retry.");
   }
+}
+
+export function prepareWriteoffConfirmation(invoiceId: string, origin = appOrigin()) {
+  const invoice = getDb().invoices.find((row) => row.id === invoiceId);
+  if (!invoice) throw new Error("Choose an exact invoice.");
+  assertEligible(invoice, "writeoff");
+  return saveConfirmation(invoice, "writeoff", origin, `Write off ${invoice.number}: cancel the remaining balance in PayPal.`);
 }
 
 function pendingConfirmation(invoiceId: string, action: ActionConfirmation["action"], origin: string, snapshot: string, tone?: ReminderTone) {
