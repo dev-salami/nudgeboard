@@ -48,7 +48,7 @@ export async function extractInbound(raw: string, channel: "email" | "whatsapp")
 export type ReminderTone = "friendly" | "firm" | "empathetic";
 
 export function reminderTone(message: string): ReminderTone {
-  const tone = message.match(/\b(friendly|firm|empathetic)\b/i)?.[1].toLowerCase();
+  const tone = message.match(/\b(friendly|firm|empathetic)\b/i)?.[1]?.toLowerCase();
   return tone === "firm" || tone === "empathetic" ? tone : "friendly";
 }
 

@@ -3,7 +3,6 @@
 @tailwind utilities;
 
 :root {
-  --font-sans: ui-sans-serif, system-ui, sans-serif;
   color-scheme: light;
   --bg: #e9eaec;
   --elev: #f6f6f7;

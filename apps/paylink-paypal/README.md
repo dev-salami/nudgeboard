@@ -8,7 +8,7 @@ The PayPal AI Hackathon opened on 1 October 2026. The shared invoicing core in `
 
 A self-contained public submission repo will be extracted from this app and `packages/paylink-core` later. Do not create that repository from this tree. This monorepo stays private. No Devpost registration and no PayPal developer account are part of this change.
 
-Application code is licensed under MIT. See [LICENSE](./LICENSE). No API keys belong in git. Typography currently uses a system sans fallback; see [font handoff](./app/fonts/README.md) for the Cabinet Grotesk licensing blocker.
+Application code is licensed under MIT. See [LICENSE](./LICENSE). No API keys belong in git. The UI self-hosts [Instrument Sans](./app/fonts/README.md) under the SIL Open Font License 1.1; Degular is not included.
 
 ## Run
 
@@ -160,7 +160,7 @@ The core `CreatePaymentInput.currency` field is typed `"USDC"` because that was 
 
 ## Work since 1 October 2026 / verification
 
-Repository history records the shared PayLink core on **4 November** (`ab88cba`), its paid-reminder guard on **4 November** (`d5a5c77`), and the PayPal scaffold on **5 November** (`9de8dc1`), all after 1 October. The shared core is reused, not represented as newly written in this sandbox integration. This app includes sandbox-only host enforcement, OAuth refresh/error handling, draft/send recovery, real status polling and evidence-backed receipts, grounded receivables summaries, AI reminder tone previews with safe fallbacks, and the guarded smoke script. Paste extraction remains deterministic. PayPal-specific work stays inside this app; Keel light-grey/white, near-black `#181C25`, mint `#71FC8F`, and tracking are preserved. The commercial font has been removed; Cabinet Grotesk self-hosting is blocked on a redistributable license (see font handoff), so system sans is used temporarily.
+Repository history records the shared PayLink core on **4 November** (`ab88cba`), its paid-reminder guard on **4 November** (`d5a5c77`), and the PayPal scaffold on **5 November** (`9de8dc1`), all after 1 October. The shared core is reused, not represented as newly written in this sandbox integration. This app includes sandbox-only host enforcement, OAuth refresh/error handling, draft/send recovery, real status polling and evidence-backed receipts, grounded receivables summaries, AI reminder tone previews with safe fallbacks, and the guarded smoke script. Paste extraction remains deterministic. PayPal-specific work stays inside this app; Keel light-grey/white, near-black `#181C25`, mint `#71FC8F`, and tracking are preserved. Typography uses self-hosted Instrument Sans (SIL OFL 1.1); Degular is not included.
 
 Focused mocked tests cover preview → explicit confirmation → send → paid receipt, all three live AI reminder tones and no-key fallbacks, unsafe/empty/down-model fallback, stored PayPal note equality, ambiguous commands, exact token binding, duplicate/retried confirmation, durable reservations/restart, expiry/cancel/changed recipients, paid/draft reminder refusals, snapshot changes while awaiting AI, payment after preview, missing payment evidence, sandbox seeding/health, and model-fabricated payment fields. Existing client/provider/AI helper/smoke-guard coverage remains. Test setup blocks unmocked `fetch` and clears payment/model/mail credential env names. No test requires credentials or sends external messages.
 
