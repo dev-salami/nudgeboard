@@ -4,17 +4,9 @@ import Link from "next/link";
 import { useState } from "react";
 import type { PaypalInvoice } from "@/lib/types";
 
-const samples = {
-  email: `From: Ada Lovelace <ada@example.com>
-Subject: Spring logo
-
-Hi Amaka — please invoice 480 USD for the logo system, due Friday.`,
-  whatsapp: "Kola Adeyemi: hey can you send the invoice for the brand workshop, 160 usd, due tomorrow. kola@studio.example",
-};
-
 export function InboxForm() {
-  const [email, setEmail] = useState(samples.email);
-  const [whatsapp, setWhatsapp] = useState(samples.whatsapp);
+  const [email, setEmail] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
   const [busy, setBusy] = useState<"email" | "whatsapp" | null>(null);
   const [note, setNote] = useState("");
   const [invoice, setInvoice] = useState<PaypalInvoice | null>(null);
@@ -50,8 +42,8 @@ export function InboxForm() {
       >
         <p className="t-micro text-muted">Email</p>
         <h2 className="mt-2 text-2xl">Paste a request</h2>
-        <textarea className="field mt-4" value={email} onChange={(event) => setEmail(event.target.value)} />
-        <button className="btn btn-primary mt-3" type="submit" disabled={busy !== null}>
+        <textarea className="field mt-4" placeholder="Paste the client's email request, including their name, email, USD amount and due date." value={email} onChange={(event) => setEmail(event.target.value)} />
+        <button className="btn btn-primary mt-3" type="submit" disabled={busy !== null || !email.trim()}>
           {busy === "email" ? "Reading…" : "Prepare local invoice draft"}
         </button>
       </form>
@@ -64,8 +56,8 @@ export function InboxForm() {
       >
         <p className="t-micro text-muted">WhatsApp</p>
         <h2 className="mt-2 text-2xl">Paste a chat</h2>
-        <textarea className="field mt-4" value={whatsapp} onChange={(event) => setWhatsapp(event.target.value)} />
-        <button className="btn btn-primary mt-3" type="submit" disabled={busy !== null}>
+        <textarea className="field mt-4" placeholder="Paste the client's message, including their name, email, USD amount and due date." value={whatsapp} onChange={(event) => setWhatsapp(event.target.value)} />
+        <button className="btn btn-primary mt-3" type="submit" disabled={busy !== null || !whatsapp.trim()}>
           {busy === "whatsapp" ? "Reading…" : "Prepare local invoice draft"}
         </button>
       </form>

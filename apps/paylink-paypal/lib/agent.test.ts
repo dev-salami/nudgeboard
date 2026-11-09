@@ -14,6 +14,15 @@ beforeEach(() => {
 });
 
 describe("free-text AI agent", () => {
+  it.each(["What's unpaid?", "Summarize receivables", "Draft a friendly reminder for an invoice"])("keeps the generic prompt %s safe on an empty store", async (message) => {
+    const response = await runChat({ message }, "http://localhost:3030");
+    expect(response.invoice).toBeUndefined();
+    expect(response.confirmation).toBeUndefined();
+    expect(getDb().invoices).toHaveLength(0);
+    expect(getDb().emails).toHaveLength(0);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("uses existing provider tools to extract a free-text invoice and relative due date", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-11-07T12:00:00Z"));

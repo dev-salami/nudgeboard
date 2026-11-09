@@ -1,17 +1,12 @@
 import Link from "next/link";
-import type { InvoiceStatus } from "@181hacks/paylink-core";
 import { MarbleMark, Money } from "@/components/keel";
 import { StatusPill } from "@/components/status-pill";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { paypalMode } from "@/lib/env";
+import { modeInvoices } from "@/lib/ledger";
+import { getDb } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
-
-const sampleRows: { clientName: string; number: string; amount: string; status: InvoiceStatus }[] = [
-  { clientName: "Harbour & Co", number: "PP-SAMPLE-01", amount: "480", status: "paid" },
-  { clientName: "Northwind", number: "PP-SAMPLE-02", amount: "220", status: "pending" },
-  { clientName: "Studio Mina", number: "PP-SAMPLE-03", amount: "90", status: "underpaid" },
-  { clientName: "Kola Adeyemi", number: "PP-SAMPLE-04", amount: "160", status: "expired" },
-];
 
 const steps = [
   { n: "01", title: "A job lands", body: "Paste the email or the WhatsApp note. The agent reads the client, the amount, and the due date." },
@@ -20,6 +15,9 @@ const steps = [
 ];
 
 export default function HomePage() {
+  const mode = paypalMode();
+  const rows = modeInvoices(getDb().invoices, mode).filter((invoice) => !invoice.sample);
+
   return (
     <div className="min-h-screen bg-bg">
       <header className="sticky top-3 z-30 mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 pt-3">
@@ -51,21 +49,10 @@ export default function HomePage() {
           </ul>
           <div className="mt-9 flex flex-wrap gap-3">
             <Link href="/chat" className="btn btn-primary px-6">Try the agent ↗</Link>
-            <Link href="/pay/inv_demo_northwind" className="btn btn-ghost px-6">Preview a pay page</Link>
           </div>
         </div>
         <div className="relative">
           <MarbleMark />
-          <div className="card absolute left-0 top-8 w-[190px] p-4">
-            <p className="text-xs text-muted">Received today</p>
-            <p className="mt-1 text-2xl"><Money value={480} /></p>
-            <span className="delta up mt-2">↑ PayPal paid</span>
-          </div>
-          <div className="card-dark absolute bottom-6 right-0 w-[210px] p-4">
-            <p className="text-xs text-[#9a9ea8]">PayPal invoice</p>
-            <p className="mt-1 text-xl">PP-2026-1041</p>
-            <p className="mt-1 text-sm"><span className="text-[#71FC8F]">●</span> Sent · awaiting</p>
-          </div>
         </div>
       </section>
 
@@ -95,9 +82,8 @@ export default function HomePage() {
           </div>
           <div className="card-dark p-6">
             <p className="text-sm text-[#9a9ea8]">Agent</p>
-            <p className="mt-3 text-2xl leading-snug">“Invoice Ada 480 USD for the logo, due Friday.”</p>
-            <p className="mt-4 text-sm text-[#9a9ea8]">PayPal draft, then send, then the hosted pay link.</p>
-            <div className="meter mt-6"><span style={{ width: "64%" }} /></div>
+            <p className="mt-3 text-2xl leading-snug">Turn a sentence into a draft.</p>
+            <p className="mt-4 text-sm text-[#9a9ea8]">Provide the client, USD amount, work and due date. Review the local draft, then confirm separately to send through PayPal.</p>
           </div>
         </div>
       </section>
@@ -105,26 +91,35 @@ export default function HomePage() {
       <section id="books" className="relative z-10 mx-auto -mt-10 max-w-5xl px-5 pb-16">
         <div className="card p-3 sm:p-5">
           <div className="flex items-center justify-between px-3 pb-2">
-            <p className="flex items-center gap-2 text-lg">Invoices <span className="pill">Sample data</span></p>
+            <p className="text-lg">Invoices</p>
             <Link href="/inbox" className="text-sm text-muted">Ingest a request ↗</Link>
           </div>
-          <div className="overflow-x-auto">
-            <table className="ledger min-w-[560px]">
-              <thead>
-                <tr><th>Customer</th><th>Number</th><th>Amount</th><th>Status</th></tr>
-              </thead>
-              <tbody>
-                {sampleRows.map((row) => (
-                  <tr key={row.number}>
-                    <td>{row.clientName}</td>
-                    <td className="text-muted">{row.number}</td>
-                    <td><Money value={row.amount} /></td>
-                    <td><StatusPill status={row.status} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <p className="px-3 pb-3 text-sm text-muted">{mode === "sandbox" ? "PayPal sandbox" : "Demo mode — simulated checkout"}</p>
+          {rows.length === 0 ? (
+            <div className="px-3 py-8">
+              <p className="text-lg">No invoices yet.</p>
+              <p className="mt-2 text-sm text-muted">Your invoices will appear here when you create them. Demo samples are not shown.</p>
+              <Link href="/chat" className="btn btn-primary btn-small mt-5">Create an invoice ↗</Link>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="ledger min-w-[560px]">
+                <thead>
+                  <tr><th>Customer</th><th>Number</th><th>Amount</th><th>Status</th></tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <tr key={row.id}>
+                      <td>{row.clientName}</td>
+                      <td className="text-muted"><Link href={`/invoices/${row.id}`}>{row.number}</Link></td>
+                      <td><Money value={row.amount} /></td>
+                      <td><StatusPill status={row.status} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </section>
 

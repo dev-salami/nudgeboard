@@ -24,9 +24,9 @@ interface Turn {
 }
 
 const prompts = [
-  "Invoice Ada Lovelace ada@example.com 480 USD for the spring logo, due Friday",
   "What's unpaid?",
-  "Remind Northwind",
+  "Summarize receivables",
+  "Draft a friendly reminder for an invoice",
 ];
 
 export function ChatApp() {

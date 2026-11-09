@@ -46,7 +46,7 @@ export function parseInbound(raw: string, channel: "email" | "whatsapp", now = n
   if (!clientName || !amount) {
     return {
       ok: false,
-      hint: "I need a name and an amount, such as “Ada — 480 USD for the logo, due Friday”.",
+      hint: "Include the client's name, USD amount, description and due date in the request.",
     };
   }
   const description =

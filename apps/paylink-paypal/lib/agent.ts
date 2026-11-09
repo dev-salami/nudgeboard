@@ -142,7 +142,7 @@ async function act(intent: DemoIntent, origin: string, channel: PaypalInvoice["c
     return {
       mode,
       paypal,
-      reply: 'I draft PayPal invoices, list what is open, and chase late ones. Try "invoice Ada Lovelace ada@example.com 480 USD for the logo, due Friday".',
+      reply: "I prepare local PayPal invoice drafts and reminder previews, and list open invoices. To create a draft, provide the client's name, email, USD amount, description and due date. Nothing is sent without a separate confirmation.",
     };
   }
   if (intent.type === "unknown") return { mode, paypal, reply: intent.hint.replace("USDC", "USD") };
