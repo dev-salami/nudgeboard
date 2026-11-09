@@ -5,7 +5,8 @@
 - `da61f52`: computed payer-history reasons, tones, escalation and movement-aware small-balance write-off policy.
 - `f75e600`: sandbox/demo cancellation, recorded external payments/refunds, confirmation inputs, partial reconciliation and invoice controls.
 - `e536b9f`: webhook event ids, app-local status history, activity/receipt evidence, GET provenance and secret-free health readiness.
-- Documentation commit: 60-second judge path, complete PayPal HTTP inventory/tool equivalents, dated app-only history and buyer-login placeholder. Existing MIT licence retained.
+- `2d2457c`: 60-second judge path, complete PayPal HTTP inventory/tool equivalents, dated app-only history and buyer-login placeholder. Existing MIT licence retained.
+- Optional item 5 follow-up: public read-only `paypal-invoice` JSON profile, issued rows only, missing/draft 404s, allowlisted sandbox hosted URLs, links and shape/privacy tests. No payment execution or new PayPal calls.
 
 ## Validation and operator follow-ups
 

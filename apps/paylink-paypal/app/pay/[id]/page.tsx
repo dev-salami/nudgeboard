@@ -21,6 +21,7 @@ export default async function PayPage({ params }: { params: Promise<{ id: string
         </div>
         <PayFlow invoice={invoice} merchantName={merchant.name} />
         <p className="mt-4 text-center text-xs text-muted">PayPal hosted checkout · {invoice.payment?.network === "paypal-sandbox" ? "sandbox" : "demo"}</p>
+        {invoice.status !== "draft" ? <p className="mt-3 text-center text-xs"><Link href={`/api/invoices/${invoice.id}/agent`}>Machine-readable invoice (JSON)</Link></p> : null}
       </div>
     </div>
   );

@@ -66,6 +66,12 @@ Payment takes place on **https://www.sandbox.paypal.com**, not inside this app. 
 
 Do not commit credentials or use a real PayPal account. No login is needed to inspect the labelled Judge demo queue; actual sandbox checkout needs the approved sandbox buyer account.
 
+## Read-only invoice for a buyer's agent
+
+`GET /api/invoices/{localInvoiceId}/agent` returns JSON with `profile: "paypal-invoice"`, `version: 1`, invoice `number`, `amount`, `currency`, `dueDate`, local `status`, `paypalStatus`, `remainingBalance`, `source`, and `payment: { payPath, hostedPaypalUrl?, execution }`. It is linked from invoice and payer pages. `?books=demo` reads only the labelled, isolated Judge demo dataset.
+
+The endpoint is public for issued/non-draft invoices and returns the same 404 for missing or draft rows. It allowlists output fields: no client email/name, merchant-only activity, confirmation tokens, transaction history or other invoices. Hosted URLs must be HTTPS on `www.sandbox.paypal.com`; otherwise they are omitted. Reads do not sync, contact PayPal or execute any payment. The local pay path is informational for demo fixtures; real sandbox payment continues to PayPal. This adds no PayPal API calls.
+
 ## Run
 
 From the monorepo root:
@@ -234,8 +240,11 @@ These dates and subjects are from `git log --since=2026-10-01 --date=short --for
 | 2026-11-09 | `da61f52` | feat(paypal): compute collection reasons from payer history |
 | 2026-11-09 | `f75e600` | feat(paypal): confirm cancellation and recorded payments and refunds |
 | 2026-11-09 | `e536b9f` | feat(paypal): surface webhook status evidence and verification readiness |
+| 2026-11-09 | `2d2457c` | docs(paypal): document judge path and complete sandbox API evidence |
 
 This documentation upgrade is committed separately as `docs(paypal): document judge path and complete sandbox API evidence`; its date and hash are in Git (a commit cannot embed its own final hash).
+
+The optional read-only agent-invoice follow-up is committed separately as `feat(paypal): expose read-only public invoice profile for buyer agents`.
 
 Focused mocked tests cover preview → explicit confirmation → send → paid receipt, all three live AI reminder tones and no-key fallbacks, unsafe/empty/down-model fallback, stored PayPal note equality, ambiguous commands, exact token binding, duplicate/retried confirmation, durable reservations/restart, expiry/cancel/changed recipients, paid/draft reminder refusals, snapshot changes while awaiting AI, payment after preview, missing payment evidence, sandbox seeding/health, and model-fabricated payment fields. Existing client/provider/AI helper/smoke-guard coverage remains. Test setup blocks unmocked `fetch` and clears payment/model/mail credential env names. No test requires credentials or sends external messages.
 

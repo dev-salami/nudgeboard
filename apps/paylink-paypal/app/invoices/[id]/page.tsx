@@ -55,6 +55,7 @@ function renderInvoice(id: string, demo: boolean) {
         <InvoiceActions id={invoice.id} status={invoice.status} paypalStatus={invoice.paypalStatus} demo={demo} initialConfirmation={getDb().confirmations.filter((row) => row.invoiceId === invoice.id && ["pending", "executing", "uncertain"].includes(row.state)).at(-1)} />
         <div className="mt-4 flex flex-wrap gap-2">
           {!demo ? <Link className="btn btn-ghost btn-small" href={`/pay/${invoice.id}`}>Payer page</Link> : null}
+          {invoice.status !== "draft" ? <Link className="btn btn-ghost btn-small" href={`/api/invoices/${invoice.id}/agent${demo ? "?books=demo" : ""}`}>Machine-readable invoice (JSON)</Link> : null}
           {invoice.receiptId ? <Link className="btn btn-mint btn-small" href={`/receipts/${invoice.receiptId}${demo ? "?books=demo" : ""}`}>Receipt</Link> : null}
         </div>
       </article>
