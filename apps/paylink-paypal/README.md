@@ -1,14 +1,76 @@
 # PayLink PayPal
 
+## 60-second judge path
+
+1. Open **https://paypal.181labs.build/dashboard** (or http://localhost:3030/dashboard locally). The merchant home is the **collections queue**, not chat. When no real sandbox invoices exist it opens populated, labelled **Judge demo data — not PayPal sandbox invoices**. No access code is required for that view.
+2. Read a proposed reminder, its computed payer-history reason, recommended tone, and remaining balance. For example, Harbour's late-payment reason comes from three prior paid invoices, not a sentence attached to the open invoice.
+3. In **View judge demo**, select/deselect proposals and click **Approve selected**. This only prepares previews. Read each exact message or cancellation note; then **Confirm and send N actions** separately to exercise simulated actions. Per-item results remain visible. In sandbox books, do not confirm outgoing actions without operator approval.
+4. Chat remains secondary at `/chat`. Typing **“yes”**, **“confirm”** or **“send it”** is refused as authorization. Chat cannot bulk-send reminders.
+5. Optional: paste a fictional email/WhatsApp request into `/inbox`. It creates a **local draft only**, not a mailbox connection or an outgoing invoice.
+
+The ungated **View judge demo / View sandbox books** control separates the datasets. Judge fixtures and confirmations are in-memory and reset on process restart; they never become sandbox payment evidence. The deployed service may need this branch deployed by its operator before these upgrades appear; this coding task did not deploy it.
+
+The displayed product name is defined once in [`lib/brand.ts`](./lib/brand.ts); this heading mirrors `PRODUCT_NAME`.
+
 AI invoicing and collections agent for freelancers. It reads a job request and saves a **local USD draft and structured preview**. Only a separate explicit confirmation can create/send a sandbox invoice or send a reminder. The payer pays on a PayPal-hosted invoice. In demo mode checkout is simulated on our pay page.
 
-This is the PayPal entry in the private `181hacks` monorepo. It is aimed at Best Agentic Commerce and Best PayPal + AI. PayPal is the payment rail: create, send, remind, fetch, and webhook verification all go through the Invoicing API. There is no Solana, x402, or Nimiq code in this app.
+This is the PayPal entry in the private `181hacks` monorepo. It is aimed at Best Agentic Commerce and Best PayPal + AI. PayPal is the rail for invoice creation, sending, reminding, cancellation, recorded external payments/refunds, status reads and webhook verification. `packages/paylink-core` is shared with a Solana sibling; this app is the **PayPal slice**. PayPal-specific types and changes stay in this app.
 
 The PayPal AI Hackathon opened on 1 October 2026. The shared invoicing core in `packages/paylink-core` was written in this repo during that window for the Solana PayLink entry: invoice domain, agent tool names, date parsing, money, and the reminder guard. This app is the PayPal slice of that work. It implements `PaymentProvider` inside the app, adds the sandbox client, the collections chat, the inbox adapters, and the payer flow. PayPal-specific types stay here. They are not added to `paylink-core`.
 
 A self-contained public submission repo will be extracted from this app and `packages/paylink-core` later. Do not create that repository from this tree. This monorepo stays private. No Devpost registration and no PayPal developer account are part of this change.
 
-Application code is licensed under MIT. See [LICENSE](./LICENSE). No API keys belong in git. The UI self-hosts [Instrument Sans](./app/fonts/README.md) under the SIL Open Font License 1.1; Degular is not included.
+Application code is licensed under MIT. See [LICENSE](./LICENSE). No API keys belong in git. The UI self-hosts [Instrument Sans](./app/fonts/README.md) under the SIL Open Font License 1.1.
+
+## Every PayPal API call
+
+The HTTP API host is exclusively `https://api-m.sandbox.paypal.com`. Demo transport and Judge demo actions make no PayPal requests. `{id}` below is the encoded PayPal invoice id, not another merchant's local invoice id.
+
+| Method | Path | Used for | Equivalent Agent Toolkit / MCP tool |
+| --- | --- | --- | --- |
+| POST | `/v1/oauth2/token` | Cached OAuth authentication | Transport authentication; no agent action |
+| POST | `/v2/invoicing/invoices` | Create a remote draft after confirmation | `create_invoice` |
+| POST | `/v2/invoicing/invoices/{id}/send` | Send the confirmed invoice | `send_invoice` |
+| GET | `/v2/invoicing/invoices/{id}` | Sync/poll, hosted link, payment/refund evidence, pre-dispatch recheck | `get_invoice` |
+| POST | `/v2/invoicing/invoices/{id}/remind` | Confirmed reminder; escalation uses this same API with firm tone | `send_invoice_reminder` |
+| POST | `/v2/invoicing/invoices/{id}/cancel` | Confirmed write-off (**cancel in PayPal**) | `cancel_sent_invoice` |
+| POST | `/v2/invoicing/invoices/{id}/payments` | Confirmed record of an already completed external/partial payment | `record_payment_for_invoice` |
+| POST | `/v2/invoicing/invoices/{id}/refunds` | Confirmed record of an already completed external refund | `record_refund_for_invoice` |
+| POST | `/v1/notifications/verify-webhook-signature` | Verify a received event before applying it | Signature verification; no agent money action |
+| GET | `/v2/invoicing/invoices?page=1&page_size=5&total_required=false` | Operator smoke script only; read-only permission check | `list_invoices` |
+
+Recorded payments/refunds **do not transfer or return money**. The app requires a returned PayPal payment/refund id and stores it; missing evidence blocks automatic retry and requires reconciliation. GET supplies cumulative paid/refunded amounts; unpaid remainders stay underpaid. No capture, order, payout, buyer-account creation or production payment API is called.
+
+### PayPal Agent Toolkit fit
+
+We retain the sandbox-only HTTP client rather than adding a runtime `@paypal/agent-toolkit` agent or `@paypal/mcp` sidecar that could bypass approval. We call the same Invoicing v2 and webhook-verification endpoints documented by those tools, behind our explicit confirmation gate. Equivalent tools include `send_invoice_reminder`, `cancel_sent_invoice`, `record_payment_for_invoice`, and `record_refund_for_invoice`. Recorded payments and refunds document external transactions; they do not execute transfers. No toolkit dependency or autonomous payment permission is installed.
+
+## Collections policy and evidence
+
+- Rank **every open invoice** by days overdue descending, then remaining balance descending. A stable invoice-id tie-break makes equal rankings deterministic.
+- One proposal per invoice: `remind`, `escalate` (firm PayPal reminder), or **Write off (cancel in PayPal)**. Policy thresholds live in `lib/collections-queue.ts`; payer history in `lib/payer-history.ts` uses exact normalized payer email and the latest three paid records in the active dataset.
+- Newly overdue first-time payers get friendly reminders. Prior late payments/repeated reminders firm the tone. Partial payments mention the received amount and remaining balance; an early partial gets empathetic wording. Escalate at 14 overdue days if previously reminded, at least $1,000 remains, or all three prior payments were late.
+- Propose write-off only when the remaining balance is at most $25, the invoice is at least 45 days overdue, and there has been no payment movement for at least 45 days. These rules are proposals, never autonomous cancellation.
+- Batch approval prepares confirmations only. The second control submits the listed pending confirmations individually as same-origin JSON. Each binds invoice, action, origin, mode, exact message/input and snapshot; each reports its own outcome. Done confirmations do not repeat, and uncertain actions require operator review.
+- The queue, books tiles, ledger, landing books section and 24-day chart use the selected dataset. Demo rows/totals remain labelled and excluded from real sandbox totals, sync and webhooks. Fictional `.example` clients include late history, a first chase, large/tiny overdue balances, partial, cancelled and refunded invoices.
+- Webhook-driven changes store the PayPal event id in app-local status history and activity details. Queue/ledger/invoice pages show evidence; webhook-driven receipts show the event id. Sync-driven changes say **PayPal invoice GET (no webhook id)**. The last received webhook id is retained separately, never invented for a GET. Demo events are labelled demo.
+- `GET /api/health` returns PayPal mode plus `webhook: "unconfigured" | "ready"`, never the configured webhook id. In sandbox, unset configuration, missing transmission headers or failed signature verification prevents application. Event ids still deduplicate.
+
+Keel styling remains mint `#71FC8F`, near-black `#181C25`, and self-hosted **Instrument Sans** only. The app's [MIT licence](./LICENSE) is unchanged; font licensing remains [SIL OFL 1.1](./app/fonts/OFL.txt).
+
+## Judge sandbox buyer login
+
+Payment takes place on **https://www.sandbox.paypal.com**, not inside this app. A separate personal/business sandbox buyer login will be provided in the submission form **after operator approval**. This change did not create a buyer account or verify that a judge login already exists. The public REST APIs listed above cannot create sandbox buyer accounts.
+
+**Operator placeholder:** `[sandbox buyer login and password to be supplied privately in the submission form after approval — not configured here]`.
+
+Do not commit credentials or use a real PayPal account. No login is needed to inspect the labelled Judge demo queue; actual sandbox checkout needs the approved sandbox buyer account.
+
+## Read-only invoice for a buyer's agent
+
+`GET /api/invoices/{localInvoiceId}/agent` returns JSON with `profile: "paypal-invoice"`, `version: 1`, invoice `number`, `amount`, `currency`, `dueDate`, local `status`, `paypalStatus`, `remainingBalance`, `source`, and `payment: { payPath, hostedPaypalUrl?, execution }`. It is linked from invoice and payer pages. `?books=demo` reads only the labelled, isolated Judge demo dataset.
+
+The endpoint is public for issued/non-draft invoices and returns the same 404 for missing or draft rows. It allowlists output fields: no client email/name, merchant-only activity, confirmation tokens, transaction history or other invoices. Hosted URLs must be HTTPS on `www.sandbox.paypal.com`; otherwise they are omitted. Reads do not sync, contact PayPal or execute any payment. The local pay path is informational for demo fixtures; real sandbox payment continues to PayPal. This adds no PayPal API calls.
 
 ## Run
 
@@ -82,7 +144,7 @@ For local Next.js development, copy [`.env.example`](./.env.example) to `apps/pa
 
 PayPal demo mode follows the credentials (unless `PAYPAL_MODE=demo` explicitly overrides), not `PAYLINK_DEMO_MODE`. That flag chooses the agent parser/model and forces AI helper fallbacks. With credentials set, **confirmed dispatches**, status reads and webhook verification use `https://api-m.sandbox.paypal.com`; previews never contact PayPal. The payer page continues to PayPal's hosted invoice (`recipient_view_url`, allowlisted to `www.sandbox.paypal.com`). "I've paid" syncs with `GET /v2/invoicing/invoices/{id}`; it cannot simulate a sandbox payment. Sandbox webhooks require `PAYPAL_WEBHOOK_ID` and signature verification returning `SUCCESS`. Paid status alone is insufficient for a receipt: both a PayPal transaction id and recorded paid amount are required; short payments stay underpaid. No transaction id or missing amount is invented.
 
-Fresh sandbox stores contain no seeded invoices or receipts. Demo samples are explicitly labelled and excluded from monetary totals; historical demo rows are omitted from sandbox dashboard/API/receivables views without deleting the stored history. The landing-page ledger shows stored invoices for the current mode, excludes samples, and explains the empty state when no invoices exist. Inbox paste fields start empty, and agent prompt chips do not target example clients or invoices. Outstanding balances subtract recorded partial payments and omit cancelled/refunded invoices. Health reports `paypal: "sandbox"` when sandbox credentials select the real rail.
+Fresh sandbox stores contain no seeded invoices or receipts. The UI instead defaults to the isolated, populated Judge demo when no real rows exist; with real invoices it defaults to those books. Historical samples remain excluded from real sandbox API/receivables/totals without deleting history. Inbox paste fields start empty; agent prompt chips are not real invoices. Outstanding balances subtract recorded partial payments and omit cancelled/refunded rows. Collected totals account for recorded refunds. Health reports `paypal: "sandbox"` when sandbox credentials select that rail, plus webhook readiness only.
 
 ### Sandbox setup (operator-run only)
 
@@ -102,10 +164,10 @@ OAuth is cached in memory with a 15-second expiry margin, concurrent refresh coa
 - Confirmation is bound to the stored invoice/payment/merchant snapshot, action, origin and mode. Changed fields, partial-payment state, cancelled previews and expired tokens cannot dispatch. Same-origin/JSON checks reject cross-site confirmation posts. This is not a replacement for merchant authentication.
 - Before the first await, the token becomes `executing` and is synchronously persisted with file/directory fsync and atomic rename. Concurrent confirmations cannot reuse it. Success becomes `done`; repeats return “already completed” without dispatch. A dispatch failure becomes `uncertain`; an interrupted process leaves `executing`. Both block new previews/replacements for that invoice, including after restart. No automatic recovery/retry occurs.
 - Sandbox reminder confirmation rechecks PayPal status, then rechecks the exact local snapshot before sending. Paid/draft/cancelled/refunded/payment-pending invoices and unavailable status reads are refused. Invoice creation revalidates after remote draft creation and before delivery. A local paid state cannot be overwritten by send completion.
-- Sandbox reminder delivery uses PayPal only, not a second SMTP/Resend message. Demo reminders only update the local rail/mail log, even with mail credentials present. Bulk chase is disabled.
+- Sandbox reminder delivery uses PayPal only, not a second SMTP/Resend message. Demo reminders only update the local rail/mail log, even with mail credentials present. Chat bulk chase remains disabled; the queue prepares multiple previews but dispatches only separately confirmed tokens.
 - Invoice pages recover pending/blocked confirmation records after reload. Review displays the exact stored message, including AI/fallback reminder prose and authoritative facts; dispatch passes it unchanged.
 
-**Storage/operational limits:** run exactly one Node process against one persistent POSIX data directory; this is not a multi-process/distributed transaction system. Keep and back up the store, never delete it to clear a blocked action. A filesystem write failure prevents initial dispatch; a crash or persistence failure after provider acceptance remains an operator-review case. PayPal can change between the final status read and the request; already in-flight requests cannot be recalled. Legacy remote sandbox drafts cannot be sent by this workflow because their remote contents cannot be matched to a confirmed local creation; operator reconciliation is required. No automated override, re-send or refund endpoint is provided. Pending preview expiry does not prove that an earlier dispatch failed. Confirmations are not multi-tenant identities; keep the prototype in a trusted, access-controlled environment.
+**Storage/operational limits:** run exactly one Node process against one persistent POSIX data directory; this is not a multi-process/distributed transaction system. Keep and back up the store, never delete it to clear a blocked action. A filesystem write failure prevents initial dispatch; a crash or persistence failure after provider acceptance remains an operator-review case. PayPal can change between the final status read and the request; already in-flight requests cannot be recalled. Legacy remote sandbox drafts cannot be sent by this workflow because their remote contents cannot be matched to a confirmed local creation; operator reconciliation is required. There is no automated override or re-send recovery. Refund recording is explicitly confirmed and does not execute a refund transfer. Pending preview expiry does not prove that an earlier dispatch failed. Confirmations are not multi-tenant identities; keep real sandbox books in a trusted, access-controlled operator environment. The ungated Judge demo has an isolated ephemeral store, not merchant payment permissions.
 
 ### Operator quality checklist — steps only, not executed here
 
@@ -158,13 +220,35 @@ Replace example addresses only with your developer sandbox accounts. Sending is 
 
 The core `CreatePaymentInput.currency` field is typed `"USDC"` because that was the first rail. This provider settles the decimal amount in USD and reports `asset: "USD"`. That adaptation lives in `lib/provider.ts`.
 
-## Work since 1 October 2026 / verification
+## What's new since 1 October 2026
 
-Repository history records the shared PayLink core on **4 November** (`ab88cba`), its paid-reminder guard on **4 November** (`d5a5c77`), and the PayPal scaffold on **5 November** (`9de8dc1`), all after 1 October. The shared core is reused, not represented as newly written in this sandbox integration. This app includes sandbox-only host enforcement, OAuth refresh/error handling, draft/send recovery, real status polling and evidence-backed receipts, grounded receivables summaries, AI reminder tone previews with safe fallbacks, and the guarded smoke script. Paste extraction remains deterministic. PayPal-specific work stays inside this app; Keel light-grey/white, near-black `#181C25`, mint `#71FC8F`, and tracking are preserved. Typography uses self-hosted Instrument Sans (SIL OFL 1.1); Degular is not included.
+These dates and subjects are from `git log --since=2026-10-01 --date=short --format='%h %ad %s' -- apps/paylink-paypal` on this branch. `packages/paylink-core` is shared with the Solana sibling; this is the PayPal app's history, not a claim that the shared core was rewritten here.
+
+| Date | Commit | PayPal-app subject |
+| --- | --- | --- |
+| 2026-11-05 | `9de8dc1` | Add PayLink PayPal, an invoicing and collections agent. |
+| 2026-11-07 | `454c2f5` | Implement sandbox-only PayPal lifecycle and AI collections with guarded smoke checks |
+| 2026-11-07 | `9f90c89` | Fix colon-containing invoice commands routing as WhatsApp pastes |
+| 2026-11-07 | `18a9259` | Require durable explicit confirmation for PayPal invoice and reminder sends |
+| 2026-11-07 | `6db0604` | Restore grounded receivables summaries and cover HTTP confirmation safety |
+| 2026-11-09 | `362ab54` | Wire AI reminder previews and harden sandbox payment evidence |
+| 2026-11-09 | `c091d43` | Review: self-host Instrument Sans (SIL OFL 1.1) and fix reminderTone types |
+| 2026-11-09 | `79fcdf3` | Remove fabricated PayPal landing ledger and client examples |
+| 2026-11-09 | `e69d688` | Serve PayLink PayPal on paypal.181labs.build, keep the sslip alias |
+| 2026-11-09 | `a466895` | feat(paypal): lead with confirmed collections queue and shared brand |
+| 2026-11-09 | `b098d97` | feat(paypal): populate isolated labelled judge demo books |
+| 2026-11-09 | `da61f52` | feat(paypal): compute collection reasons from payer history |
+| 2026-11-09 | `f75e600` | feat(paypal): confirm cancellation and recorded payments and refunds |
+| 2026-11-09 | `e536b9f` | feat(paypal): surface webhook status evidence and verification readiness |
+| 2026-11-09 | `2d2457c` | docs(paypal): document judge path and complete sandbox API evidence |
+
+This documentation upgrade is committed separately as `docs(paypal): document judge path and complete sandbox API evidence`; its date and hash are in Git (a commit cannot embed its own final hash).
+
+The optional read-only agent-invoice follow-up is committed separately as `feat(paypal): expose read-only public invoice profile for buyer agents`.
 
 Focused mocked tests cover preview → explicit confirmation → send → paid receipt, all three live AI reminder tones and no-key fallbacks, unsafe/empty/down-model fallback, stored PayPal note equality, ambiguous commands, exact token binding, duplicate/retried confirmation, durable reservations/restart, expiry/cancel/changed recipients, paid/draft reminder refusals, snapshot changes while awaiting AI, payment after preview, missing payment evidence, sandbox seeding/health, and model-fabricated payment fields. Existing client/provider/AI helper/smoke-guard coverage remains. Test setup blocks unmocked `fetch` and clears payment/model/mail credential env names. No test requires credentials or sends external messages.
 
-**Handoff:** tests/typecheck/build were not executable in the coding container: Node.js and pnpm are absent. No runtime was installed. Run the three commands in the Run section on the reviewer box. Real PayPal account permissions, sandbox delivery/payment, model quality, and browser visuals remain unverified; mocked tests cannot establish those. This is a local hackathon prototype, not an authenticated multi-tenant production billing service. Receipt status is monotonic once paid; subsequent refunds/reversals require further reconciliation work.
+**Handoff:** tests/typecheck/build were not executable in the coding container: Node.js and pnpm are absent. No runtime was installed. Run the three commands in the Run section on the reviewer box. New focused tests cover queue ranking/approval, history reasons, fixture separation, cancel/payment/refund paths, refusal/snapshot rules, webhook ids/deduplication/signatures and health redaction. Real PayPal permissions, sandbox delivery/payment, model quality and browser visuals remain unverified; mocks cannot establish those. Configure the webhook id and separately approve/provide a sandbox buyer login. Existing paid receipts remain historical payment evidence; later refund status and recorded refund amount are shown separately, not represented as a new paid receipt. Optional real-sandbox seeding automation was deferred; no PayPal requests, deployments or smoke runs were made.
 
 ## Deploy shape
 

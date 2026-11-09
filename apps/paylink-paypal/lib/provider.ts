@@ -45,8 +45,10 @@ export interface PaypalRail extends PaymentProvider {
 
 let cached: PaypalRail | null = null;
 let cachedMode = "";
+let judgeRail: PaypalRail | null = null;
 
 export function getPaypalRail(): PaypalRail {
+  if (inJudgeDemo()) return judgeRail ??= createPaypalRail(createPaypalClient({ mode: "demo" }));
   const mode = paypalMode();
   if (!cached || cachedMode !== mode) {
     cached = createPaypalRail(createPaypalClient({
@@ -62,6 +64,7 @@ export function getPaypalRail(): PaypalRail {
 }
 
 export function resetPaypalRail(): void {
+  judgeRail = null;
   cached = null;
   cachedMode = "";
 }
@@ -81,7 +84,7 @@ export function createPaypalRail(client: PaypalTransport): PaypalRail {
         invoiceDate: fields.invoiceDate || new Date().toISOString().slice(0, 10),
         clientName: fields.clientName || "Client",
         clientEmail: fields.clientEmail,
-        merchantName: fields.merchantName || "PayLink",
+        merchantName: fields.merchantName || PRODUCT_NAME,
         merchantEmail: fields.merchantEmail || "merchant@example.com",
         note: fields.note,
         payUrl: fields.payUrl,
@@ -156,7 +159,7 @@ export function classifyPaypalInvoice(remote: PaypalRemoteInvoice, expected: str
       message: "PayPal recorded a partial payment.",
     };
   }
-  if (status === "CANCELLED" || status === "REFUNDED") {
+  if (["CANCELLED", "REFUNDED", "MARKED_AS_REFUNDED", "PARTIALLY_REFUNDED"].includes(status)) {
     return { status: "expired", explorerUrl: remote.recipientViewUrl, message: `PayPal status is ${status}.` };
   }
   if (status === "PAYMENT_PENDING") {
@@ -167,3 +170,5 @@ export function classifyPaypalInvoice(remote: PaypalRemoteInvoice, expected: str
   }
   return { status: "pending", explorerUrl: remote.recipientViewUrl, message: `PayPal status is ${status}.` };
 }
+import { PRODUCT_NAME } from "./brand";
+import { inJudgeDemo } from "./judge-demo-context";

@@ -4,12 +4,16 @@ import { useEffect, useState } from "react";
 import { Delta, Money } from "./keel";
 import { Ledger } from "./ledger";
 import type { PaypalInvoice } from "@/lib/types";
-import { balance, receivable } from "@/lib/ledger";
+import { balance, collectedAmount, receivable } from "@/lib/ledger";
+import { isOpen } from "@/lib/collections-queue";
+import { JUDGE_DEMO_LABEL } from "@/lib/judge-demo-seed";
+import { CollectionsQueue } from "./collections-queue";
 
-export function DashboardLive({ initial }: { initial: PaypalInvoice[] }) {
+export function DashboardLive({ initial, demo = false }: { initial: PaypalInvoice[]; demo?: boolean }) {
   const [rows, setRows] = useState(initial);
 
   useEffect(() => {
+    if (demo) return;
     const timer = setInterval(() => {
       void fetch("/api/invoices")
         .then((response) => response.json())
@@ -19,25 +23,29 @@ export function DashboardLive({ initial }: { initial: PaypalInvoice[] }) {
         .catch(() => undefined);
     }, 3000);
     return () => clearInterval(timer);
-  }, []);
+  }, [demo]);
+
+  const eligible = (invoice: PaypalInvoice) => demo ? isOpen(invoice) : receivable(invoice);
 
   const monthStart = new Date();
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);
   const received = rows
-    .filter((invoice) => !invoice.sample && invoice.status === "paid" && invoice.paidAt && new Date(invoice.paidAt) >= monthStart)
+    .filter((invoice) => (demo || !invoice.sample) && invoice.status === "paid" && invoice.paypalStatus !== "REFUNDED" && invoice.paidAt && new Date(invoice.paidAt) >= monthStart)
     .reduce((total, invoice) => total + Number(invoice.amountReceived || invoice.amount), 0);
   const outstanding = rows
-    .filter((invoice) => receivable(invoice) && invoice.status !== "expired")
+    .filter((invoice) => eligible(invoice) && invoice.status !== "expired")
     .reduce((total, invoice) => total + balance(invoice), 0);
-  const collected = rows.filter((invoice) => !invoice.sample && invoice.status === "paid").reduce((total, invoice) => total + Number(invoice.amountReceived || invoice.amount), 0);
-  const overdue = rows.filter((invoice) => receivable(invoice) && invoice.status === "expired").reduce((total, invoice) => total + balance(invoice), 0);
-  const openCount = rows.filter((invoice) => receivable(invoice) && invoice.status !== "expired").length;
-  const paidCount = rows.filter((invoice) => !invoice.sample && invoice.status === "paid").length;
+  const collected = rows.filter((invoice) => demo || !invoice.sample).reduce((total, invoice) => total + collectedAmount(invoice), 0);
+  const overdue = rows.filter((invoice) => eligible(invoice) && invoice.status === "expired").reduce((total, invoice) => total + balance(invoice), 0);
+  const openCount = rows.filter((invoice) => eligible(invoice) && invoice.status !== "expired").length;
+  const paidCount = rows.filter((invoice) => (demo || !invoice.sample) && invoice.status === "paid" && invoice.paypalStatus !== "REFUNDED").length;
 
   return (
     <>
+      <CollectionsQueue invoices={rows} demo={demo} onInvoice={(invoice) => setRows((current) => current.map((row) => row.id === invoice.id ? invoice : row))} />
       <section>
+        {demo ? <p className="text-sm text-muted">{JUDGE_DEMO_LABEL}</p> : null}
         <p className="text-2xl">Received this month</p>
         <p className="big-num mt-1">
           <Money value={received} />
@@ -46,10 +54,10 @@ export function DashboardLive({ initial }: { initial: PaypalInvoice[] }) {
       <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Tile label="Outstanding" value={<Money value={outstanding} />} extra={<Delta tone="flat">{openCount} open</Delta>} />
         <Tile label="Collected" value={<Money value={collected} />} extra={<Delta tone="up">{paidCount} paid</Delta>} />
-        <Tile label="Overdue" value={<Money value={overdue} />} extra={<Delta tone={overdue > 0 ? "down" : "flat"}>{rows.filter((invoice) => receivable(invoice) && invoice.status === "expired").length}</Delta>} />
+        <Tile label="Overdue" value={<Money value={overdue} />} extra={<Delta tone={overdue > 0 ? "down" : "flat"}>{rows.filter((invoice) => eligible(invoice) && invoice.status === "expired").length}</Delta>} />
       </section>
       <section className="card mt-3 p-2 sm:p-3">
-        <Ledger rows={rows} />
+        <Ledger rows={rows} demo={demo} />
       </section>
     </>
   );

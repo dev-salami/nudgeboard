@@ -1,12 +1,17 @@
 import { cancelConfirmation } from "@/lib/confirmations";
-import { remindInvoice, sendExisting } from "@/lib/invoices";
+import { remindInvoice, sendExisting, writeoffInvoice, recordInvoiceMoney } from "@/lib/invoices";
 import { getDb } from "@/lib/store";
 import type { PaypalInvoice } from "@/lib/types";
+import { withJudgeDemo } from "@/lib/judge-demo-context";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
+  return new URL(request.url).searchParams.get("books") === "demo" ? withJudgeDemo(() => decide(request, context)) : decide(request, context);
+}
+
+async function decide(request: Request, context: { params: Promise<{ id: string }> }) {
   // JSON-only explicit UI decision. Text/model output is never authorization.
   if (!request.headers.get("content-type")?.startsWith("application/json") || request.headers.get("sec-fetch-site") === "cross-site"
     || (request.headers.get("origin") && request.headers.get("origin") !== new URL(request.url).origin)) {
@@ -17,6 +22,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (!body || typeof body !== "object" || Array.isArray(body)) return Response.json({ error: "Use an explicit confirmation decision." }, { status: 400 });
   const record = getDb().confirmations.find((row) => row.id === id);
   if (!record) return Response.json({ error: "Preview not found." }, { status: 404 });
+  if (record.origin !== new URL(request.url).origin) return Response.json({ error: "Preview origin differs." }, { status: 403 });
   if (body.decision === "cancel") {
     try { return Response.json({ confirmation: cancelConfirmation(id), message: "Cancelled. Nothing sent." }); }
     catch { return Response.json({ error: "This preview is no longer pending." }, { status: 409 }); }
@@ -28,6 +34,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   try {
     const result: { invoice: PaypalInvoice; refusal?: string } = record.action === "send"
       ? { invoice: await sendExisting(record.invoiceId, record.origin, record.id) }
+      : record.action === "writeoff" ? { invoice: await writeoffInvoice(record.invoiceId, record.origin, record.id) }
+      : record.action === "record-payment" || record.action === "record-refund" ? { invoice: await recordInvoiceMoney(record.invoiceId, record.action, record.origin, record.id) }
       : await remindInvoice(record.invoiceId, record.origin, record.id);
     return Response.json({ ...result, confirmation: record, message: result.refusal || "Confirmed action completed. Payment status is not inferred from sending." });
   } catch (error) {

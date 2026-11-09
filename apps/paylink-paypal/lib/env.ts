@@ -10,6 +10,7 @@ export function paypalConfigured(): boolean {
 }
 
 export function paypalMode(): PaypalMode {
+  if (inJudgeDemo()) return "demo";
   if (env("PAYPAL_MODE") === "demo") return "demo";
   return paypalConfigured() ? "sandbox" : "demo";
 }
@@ -42,6 +43,7 @@ export function appOrigin(request?: Request): string {
 }
 
 export function demoMode(): boolean {
+  if (inJudgeDemo()) return true;
   const flag = env("PAYLINK_DEMO_MODE");
   if (flag === "0") return false;
   if (flag === "1" || flag === "true") return true;
@@ -59,3 +61,4 @@ export function merchantProfile() {
 export function dataDir(): string {
   return env("DATA_DIR") || "";
 }
+import { inJudgeDemo } from "./judge-demo-context";

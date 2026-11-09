@@ -3,11 +3,18 @@ import { notFound } from "next/navigation";
 import { formatLongDate } from "@181hacks/paylink-core";
 import { Money } from "@/components/keel";
 import { getDb } from "@/lib/store";
+import { withJudgeDemo } from "@/lib/judge-demo-context";
+import { JUDGE_DEMO_LABEL } from "@/lib/judge-demo-seed";
 
 export const dynamic = "force-dynamic";
 
-export default async function ReceiptPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ReceiptPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ books?: string }> }) {
   const { id } = await params;
+  const demo = (await searchParams).books === "demo";
+  return demo ? withJudgeDemo(() => renderReceipt(id, true)) : renderReceipt(id, false);
+}
+
+function renderReceipt(id: string, demo: boolean) {
   const receipt = getDb().receipts.find((item) => item.id === id);
   if (!receipt) notFound();
   const paidDay = receipt.paidAt.slice(0, 10);
@@ -15,7 +22,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
     <div className="pay-shell bg-bg">
       <article className="paper pay-card p-6 sm:p-8">
         <span className="paid-seal">Paid</span>
-        {receipt.sample ? <p className="mt-2 text-sm text-muted">Demo sample — not a real payment</p> : null}
+        {receipt.sample ? <p className="mt-2 text-sm text-muted">{JUDGE_DEMO_LABEL}</p> : null}
         <p className="t-micro mt-6 text-muted">Receipt {receipt.number}</p>
         <h1 className="mt-2 text-3xl">{receipt.merchantName}</h1>
         <p className="num pay-amount mt-4">
@@ -44,7 +51,8 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
             <dd className="text-right">{receipt.transactionId ?? "—"}</dd>
           </div>
         </dl>
-        <Link href="/dashboard" className="btn btn-primary mt-8 w-full">Back to the books</Link>
+        <p className="mt-4 break-all text-sm text-muted">{receipt.lastPaypalEventId ? `${receipt.paypalInvoiceId?.startsWith("DEMO-") ? "Demo webhook" : "PayPal webhook"}: ${receipt.lastPaypalEventId}` : "No webhook id — payment reconciled without a webhook"}</p>
+        <Link href={demo ? "/dashboard?books=demo" : "/dashboard"} className="btn btn-primary mt-8 w-full">Back to the books</Link>
       </article>
     </div>
   );

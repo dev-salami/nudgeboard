@@ -2,8 +2,9 @@ import Link from "next/link";
 import { Money } from "./keel";
 import { StatusPill } from "./status-pill";
 import type { PaypalInvoice } from "@/lib/types";
+import { statusEvidence } from "@/lib/evidence";
 
-export function Ledger({ rows }: { rows: PaypalInvoice[] }) {
+export function Ledger({ rows, demo = false }: { rows: PaypalInvoice[]; demo?: boolean }) {
   if (rows.length === 0) {
     return <p className="px-4 py-8 text-sm text-muted">No invoices yet. Ask the agent to draft one.</p>;
   }
@@ -24,17 +25,21 @@ export function Ledger({ rows }: { rows: PaypalInvoice[] }) {
           {rows.map((invoice) => (
             <tr key={invoice.id}>
               <td>
-                <Link href={`/invoices/${invoice.id}`}>{invoice.clientName}</Link>
-                {invoice.sample ? <span className="pill ml-2">Demo sample</span> : null}
+                <Link href={`/invoices/${invoice.id}${demo ? "?books=demo" : ""}`}>{invoice.clientName}</Link>
+                {invoice.sample ? <span className="pill ml-2">Judge demo</span> : null}
                 <span className="block text-xs text-muted">{invoice.description}</span>
               </td>
               <td className="text-muted">{invoice.number}</td>
               <td>
                 <Money value={invoice.amount} />
+                {invoice.amountReceived ? <span className="block text-xs text-muted">Received {invoice.amountReceived} USD</span> : null}
+                {invoice.amountRefunded ? <span className="block text-xs text-muted">Refunded {invoice.amountRefunded} USD</span> : null}
               </td>
               <td className="text-muted">{invoice.payment?.reference ?? "—"}</td>
               <td>
                 <StatusPill status={invoice.status} />
+                <span className="block text-xs text-muted">{invoice.paypalStatus}</span>
+                <span className="block break-all text-xs text-muted">{statusEvidence(invoice)}</span>
               </td>
             </tr>
           ))}

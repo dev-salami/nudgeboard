@@ -37,13 +37,23 @@ export interface PaypalInvoice {
   amountReceived?: string;
   receiptId?: string;
   sample?: boolean;
+  source?: "judge-demo";
+  lastPaymentAt?: string;
+  amountRefunded?: string;
+  recordedPaymentId?: string;
+  recordedRefundId?: string;
   channel?: "agent" | "email" | "whatsapp" | "manual";
   paypalStatus?: string;
+  lastPaypalEventId?: string;
+  statusSource?: "webhook" | "paypal-get" | "confirmed-action";
+  statusHistory?: { at: string; status: InvoiceStatus; paypalStatus?: string; source: "webhook" | "paypal-get" | "confirmed-action"; eventId?: string }[];
+  lastRemindedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface PaypalReceipt {
+  lastPaypalEventId?: string;
   id: string;
   invoiceId: string;
   number: string;
@@ -86,7 +96,8 @@ export interface Database {
 export interface ActionConfirmation {
   id: string;
   invoiceId: string;
-  action: "send" | "remind";
+  action: "send" | "remind" | "writeoff" | "record-payment" | "record-refund";
+  moneyInput?: import("./paypal-client").PaypalMoneyInput;
   tone?: "friendly" | "firm" | "empathetic";
   mode: "demo" | "sandbox";
   snapshot: string;
