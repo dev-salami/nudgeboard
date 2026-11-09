@@ -29,7 +29,8 @@ it("defaults empty sandbox books to demo but never includes samples in real tota
   expect(booksView([], "sandbox", "sandbox").rows).toEqual([]);
   updateDb((db) => { db.invoices = judgeDemoInvoices(now); });
   expect(totals()).toMatchObject({ outstanding: 0, collected: 0, overdue: 0 });
-  const real = { ...judgeDemoInvoices(now)[0], id: "real", sample: false, payment: undefined };
+  const fixture = judgeDemoInvoices(now)[0]!;
+  const real = { ...fixture, id: "real", sample: false, payment: undefined };
   expect(booksView([real], "sandbox").demo).toBe(false);
   expect(booksView([real], "sandbox", "demo").demo).toBe(true);
 });
@@ -39,7 +40,7 @@ it("isolates judge mutations and mode from the persisted merchant ledger", async
   await withJudgeDemo(async () => {
     expect(paypalMode()).toBe("demo");
     expect(getDb().invoices.length).toBeGreaterThan(10);
-    updateDb((db) => { db.invoices[0].description = "Isolated demo edit"; });
+    updateDb((db) => { const first = db.invoices[0]; if (first) first.description = "Isolated demo edit"; });
     await Promise.resolve(); expect(paypalMode()).toBe("demo");
   });
   expect(paypalMode()).toBe("sandbox"); expect(getDb().invoices).toEqual([]);

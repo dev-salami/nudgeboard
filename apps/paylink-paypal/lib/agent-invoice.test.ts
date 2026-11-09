@@ -10,7 +10,7 @@ import { agentInvoice } from "./agent-invoice";
 beforeEach(() => { vi.stubEnv("DATA_DIR", mkdtempSync(path.join(tmpdir(), "paypal-agent-invoice-"))); blankStore(); });
 function read(id: string, query = "") { return GET(new Request(`http://localhost:3030/api/invoices/${id}/agent${query}`), { params: Promise.resolve({ id }) }); }
 it("returns only the public schema, never merchant/payer metadata or activity", async () => {
-  const row = judgeDemoInvoices()[0];
+  const row = judgeDemoInvoices()[0]!;
   row.payment!.hostedUrl = "https://www.sandbox.paypal.com/invoice/p/#INV2-TEST";
   updateDb((db) => { db.invoices.push(row); });
   const before = JSON.stringify(getDb());
@@ -25,7 +25,7 @@ it("returns only the public schema, never merchant/payer metadata or activity", 
   expect(JSON.stringify(getDb())).toBe(before); expect(fetch).not.toHaveBeenCalled();
 });
 it("returns indistinguishable 404s for missing and draft invoices", async () => {
-  const row = { ...judgeDemoInvoices()[0], status: "draft" as const };
+  const row = { ...judgeDemoInvoices()[0]!, status: "draft" as const };
   updateDb((db) => { db.invoices.push(row); });
   const missing = await read("missing"); const draft = await read(row.id);
   expect(missing.status).toBe(404); expect(draft.status).toBe(404);
@@ -34,7 +34,7 @@ it("returns indistinguishable 404s for missing and draft invoices", async () => 
 });
 it("never publishes a production/custom hosted URL", () => {
   for (const hostedUrl of ["https://www.paypal.com/invoice/x", "https://www.sandbox.paypal.com.evil.example/x", "https://user@www.sandbox.paypal.com/x", "javascript:alert(1)"]) {
-    const row = judgeDemoInvoices()[0]; row.payment!.hostedUrl = hostedUrl;
+    const row = judgeDemoInvoices()[0]!; row.payment!.hostedUrl = hostedUrl;
     expect(agentInvoice(row)?.payment.hostedPaypalUrl).toBeUndefined();
   }
 });

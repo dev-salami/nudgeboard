@@ -32,7 +32,7 @@ it.each(["PAID", "PARTIALLY_PAID", "CANCELLED", "REFUNDED"])("stores and surface
   expect(statusEvidence(row)).toContain(event.id);
   expect(row.statusHistory?.at(-1)).toMatchObject({ eventId: event.id, source: "webhook", paypalStatus: status });
   expect(getDb().activities.filter((a) => a.invoiceId === row.id && a.kind === "status_changed").every((a) => a.detail?.includes(event.id))).toBe(true);
-  if (status === "PAID") expect(getDb().receipts[0].lastPaypalEventId).toBe(event.id);
+  if (status === "PAID") expect(getDb().receipts[0]?.lastPaypalEventId).toBe(event.id);
   if (status === "PARTIALLY_PAID") expect(row).toMatchObject({ status: "underpaid", amountReceived: "40.00" });
   if (status === "REFUNDED") expect(row.amountRefunded).toBe("120.00");
   const count = row.statusHistory!.length;

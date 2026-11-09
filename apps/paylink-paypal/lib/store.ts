@@ -92,8 +92,12 @@ export function getDb(): Database {
 export function updateDb<T>(mutate: (db: Database) => T): T {
   const db = getDb();
   const result = mutate(db);
-  memory.current = db;
-  if (!inJudgeDemo()) writeToDisk(db);
+  // Judge-demo mutations stay in the request-local fixture store and must never
+  // replace or persist the merchant ledger.
+  if (!inJudgeDemo()) {
+    memory.current = db;
+    writeToDisk(db);
+  }
   return result;
 }
 
