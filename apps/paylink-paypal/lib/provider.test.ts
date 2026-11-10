@@ -17,8 +17,8 @@ function input(amount = "220"): CreatePaymentInput {
     description: "Homepage",
     dueDate: "2026-12-01",
     invoiceDate: "2026-11-05",
-    merchantName: "Amaka Studio",
-    merchantEmail: "amaka@amaka.studio",
+    merchantName: "Fictional Studio",
+    merchantEmail: "merchant@example.com",
     payUrl: "http://localhost:3030/pay/inv_provider",
   } as CreatePaymentInput;
 }

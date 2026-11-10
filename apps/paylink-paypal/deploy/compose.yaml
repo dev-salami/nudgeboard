@@ -1,4 +1,4 @@
-# PayLink PayPal behind an existing Coolify (Traefik) proxy.
+# Nudgeboard behind an existing Coolify (Traefik) proxy.
 # Env lives outside git, for example /opt/paypal/secrets.env (mode 600).
 # Build context is the monorepo root (../../.. from this file).
 # Official host and sslip alias use separate TLS routers, as Circles does.

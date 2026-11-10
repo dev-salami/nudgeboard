@@ -10,9 +10,14 @@ const sans = localFont({
   weight: "400 700",
 });
 
+const title = `${PRODUCT_NAME} — ${PRODUCT_DESCRIPTOR}`;
+const description = `${PRODUCT_NAME} — ${PRODUCT_DESCRIPTOR}. Draft invoices, review payer-aware proposals, and confirm each PayPal action.`;
+
 export const metadata: Metadata = {
-  title: `${PRODUCT_NAME} — ${PRODUCT_DESCRIPTOR}`,
-  description: "An invoicing and collections agent for freelancers. Drafts, sends, and chases PayPal invoices.",
+  title,
+  description,
+  openGraph: { type: "website", title, description, siteName: PRODUCT_NAME },
+  twitter: { card: "summary", title, description },
 };
 
 const themeScript = `try{var t=localStorage.getItem('paylink-theme');if(t==='dark')document.documentElement.classList.add('dark')}catch(e){}`;

@@ -4,6 +4,7 @@ import { PayFlow } from "@/components/pay-flow";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { findInvoice } from "@/lib/invoices";
 import { getDb } from "@/lib/store";
+import { PRODUCT_NAME, PRODUCT_MARK } from "@/lib/brand";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export default async function PayPage({ params }: { params: Promise<{ id: string
     <div className="pay-shell bg-bg">
       <div className="w-full max-w-[440px]">
         <div className="mb-4 flex items-center justify-between">
-          <Link href="/" className="k-logo text-sm">P</Link>
+          <Link href="/" className="k-logo text-sm" aria-label={`${PRODUCT_NAME} home`}>{PRODUCT_MARK}</Link>
           <ThemeToggle />
         </div>
         <PayFlow invoice={invoice} merchantName={merchant.name} />
