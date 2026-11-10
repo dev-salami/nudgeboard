@@ -1,0 +1,8 @@
+# Allowlist only the documented PayPal SANDBOX judge-buyer password line in
+# README files. That login is a sandbox personal/buyer account, not a client
+# secret and not merchant REST credentials. Do not extend this to other paths.
+[[allowlists]]
+description = "Documented PayPal SANDBOX-only judge buyer password in README"
+condition = "AND"
+paths = ['''(?:^|/)(apps/paylink-paypal/)?README\.md$''']
+regexes = ['''Password: `[^`]+`''']
