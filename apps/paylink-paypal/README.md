@@ -15,11 +15,11 @@ The displayed product name is defined once in [`lib/brand.ts`](./lib/brand.ts); 
 
 AI invoicing and collections agent for freelancers. It reads a job request and saves a **local USD draft and structured preview**. Only a separate explicit confirmation can create/send a sandbox invoice or send a reminder. The payer pays on a PayPal-hosted invoice. In demo mode checkout is simulated on our pay page.
 
-This is the PayPal entry in the private `181hacks` monorepo. It is aimed at Best Agentic Commerce and Best PayPal + AI. PayPal is the rail for invoice creation, sending, reminding, cancellation, recorded external payments/refunds, status reads and webhook verification. `packages/paylink-core` is shared with a Solana sibling; this app is the **PayPal slice**. PayPal-specific types and changes stay in this app.
+This repository is a private MIT extract of the Nudgeboard PayPal app and the shared `packages/paylink-core` workspace package. It is aimed at Best Agentic Commerce and Best PayPal + AI. PayPal is the rail for invoice creation, sending, reminding, cancellation, recorded external payments/refunds, status reads and webhook verification. `packages/paylink-core` is shared with a Solana sibling; this app is the **PayPal slice**. PayPal-specific types and changes stay in this app.
 
 The PayPal AI Hackathon opened on 1 October 2026. The shared invoicing core in `packages/paylink-core` was written in this repo during that window for the Solana sibling product named PayLink: invoice domain, agent tool names, date parsing, money, and the reminder guard. This app is **Nudgeboard**, the PayPal slice, not a resubmission under the sibling's product name. It implements `PaymentProvider` inside the app, adds the sandbox client, the collections queue, the inbox adapters, and the payer flow. PayPal-specific types stay here. They are not added to `paylink-core`.
 
-A self-contained public submission repo will be extracted from this app and `packages/paylink-core` later. Do not create that repository from this tree. This monorepo stays private. No Devpost registration and no PayPal developer account are part of this change.
+The extract history was produced with `git filter-repo` so original author dates are preserved; commit hashes differ from the source monorepo. No Devpost registration is part of this tree.
 
 Application code is licensed under MIT. See [LICENSE](./LICENSE). No API keys belong in git. The UI self-hosts [Instrument Sans](./app/fonts/README.md) under the SIL Open Font License 1.1.
 
@@ -88,7 +88,7 @@ The endpoint is public for issued/non-draft invoices and returns the same 404 fo
 
 ## Run
 
-From the monorepo root:
+From the repository root:
 
 ```bash
 pnpm install
@@ -236,27 +236,32 @@ The core `CreatePaymentInput.currency` field is typed `"USDC"` because that was 
 
 ## What's new since 1 October 2026
 
-These dates and subjects are from `git log --since=2026-10-01 --date=short --format='%h %ad %s' -- apps/paylink-paypal` on this branch. `packages/paylink-core` is shared with the Solana sibling; this is the PayPal app's history, not a claim that the shared core was rewritten here.
+These dates are the original author timestamps (Africa/Lagos, WAT) preserved through `git filter-repo`. Short hashes are from this extract's rewritten history and therefore differ from the source monorepo. `packages/paylink-core` is shared with a Solana sibling product named PayLink; this is Nudgeboard's PayPal-app history, not a claim that the shared core was rewritten here.
 
 Historical commit subjects below predate the Nudgeboard name and are preserved verbatim.
 
 | Date | Commit | PayPal-app subject |
 | --- | --- | --- |
-| 2026-11-05 | `9de8dc1` | Add PayLink PayPal, an invoicing and collections agent. |
-| 2026-11-07 | `454c2f5` | Implement sandbox-only PayPal lifecycle and AI collections with guarded smoke checks |
-| 2026-11-07 | `9f90c89` | Fix colon-containing invoice commands routing as WhatsApp pastes |
-| 2026-11-07 | `18a9259` | Require durable explicit confirmation for PayPal invoice and reminder sends |
-| 2026-11-07 | `6db0604` | Restore grounded receivables summaries and cover HTTP confirmation safety |
-| 2026-11-09 | `362ab54` | Wire AI reminder previews and harden sandbox payment evidence |
-| 2026-11-09 | `c091d43` | Review: self-host Instrument Sans (SIL OFL 1.1) and fix reminderTone types |
-| 2026-11-09 | `79fcdf3` | Remove fabricated PayPal landing ledger and client examples |
-| 2026-11-09 | `e69d688` | Serve PayLink PayPal on paypal.181labs.build, keep the sslip alias |
-| 2026-11-09 | `a466895` | feat(paypal): lead with confirmed collections queue and shared brand |
-| 2026-11-09 | `b098d97` | feat(paypal): populate isolated labelled judge demo books |
-| 2026-11-09 | `da61f52` | feat(paypal): compute collection reasons from payer history |
-| 2026-11-09 | `f75e600` | feat(paypal): confirm cancellation and recorded payments and refunds |
-| 2026-11-09 | `e536b9f` | feat(paypal): surface webhook status evidence and verification readiness |
-| 2026-11-09 | `2d2457c` | docs(paypal): document judge path and complete sandbox API evidence |
+| 2026-11-05 | `0bc1872` | Add PayLink PayPal, an invoicing and collections agent. |
+| 2026-11-07 | `3662af6` | Implement sandbox-only PayPal lifecycle and AI collections with guarded smoke checks |
+| 2026-11-07 | `a980d74` | Fix colon-containing invoice commands routing as WhatsApp pastes |
+| 2026-11-07 | `7aa9a73` | Require durable explicit confirmation for PayPal invoice and reminder sends |
+| 2026-11-07 | `a4941fa` | Restore grounded receivables summaries and cover HTTP confirmation safety |
+| 2026-11-09 | `e1e5c9f` | Wire AI reminder previews and harden sandbox payment evidence |
+| 2026-11-09 | `5e9f27b` | Review: self-host Instrument Sans (SIL OFL 1.1) and fix reminderTone types |
+| 2026-11-09 | `b7faed7` | Remove fabricated PayPal landing ledger and client examples |
+| 2026-11-09 | `e356f40` | Serve PayLink PayPal on paypal.181labs.build, keep the sslip alias |
+| 2026-11-09 | `76036d9` | feat(paypal): lead with confirmed collections queue and shared brand |
+| 2026-11-09 | `5f08c05` | feat(paypal): populate isolated labelled judge demo books |
+| 2026-11-09 | `c57ef5e` | feat(paypal): compute collection reasons from payer history |
+| 2026-11-09 | `2d8cbfc` | feat(paypal): confirm cancellation and recorded payments and refunds |
+| 2026-11-09 | `7360011` | feat(paypal): surface webhook status evidence and verification readiness |
+| 2026-11-09 | `da9bf2c` | docs(paypal): document judge path and complete sandbox API evidence |
+| 2026-11-09 | `15d1b59` | feat(paypal): expose read-only public invoice profile for buyer agents |
+| 2026-11-09 | `161c52e` | Review: keep judge-demo mutations out of the merchant store |
+| 2026-11-09 | `a9f68c8` | docs(paypal): note that the judge upgrades are already live |
+| 2026-11-10 | `d69914d` | feat(paypal): rename product to Nudgeboard and clarify judge buyer placeholder |
+| 2026-11-10 | `03302fa` | docs(paypal): add dedicated sandbox judge buyer login to the README |
 
 This documentation upgrade is committed separately as `docs(paypal): document judge path and complete sandbox API evidence`; its date and hash are in Git (a commit cannot embed its own final hash).
 

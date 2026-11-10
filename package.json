@@ -1,20 +1,17 @@
 {
-  "name": "181hacks",
+  "name": "nudgeboard",
   "private": true,
   "version": "0.1.0",
-  "description": "Hackathon monorepo. PayLink Agent is the Encode Club Solana Hackathon 2026 entry.",
+  "description": "Nudgeboard: a PayPal sandbox invoicing and collections agent (MIT).",
+  "license": "MIT",
   "scripts": {
-    "dev": "pnpm --filter paylink-solana dev",
-    "dev:paypal": "pnpm --filter paylink-paypal dev",
-    "build": "pnpm --filter paylink-solana build",
-    "build:paypal": "pnpm --filter paylink-paypal build",
-    "start": "pnpm --filter paylink-solana start",
-    "start:paypal": "pnpm --filter paylink-paypal start",
+    "dev": "pnpm --filter paylink-paypal dev",
+    "build": "pnpm --filter paylink-paypal build",
+    "start": "pnpm --filter paylink-paypal start",
     "lint": "pnpm -r --if-present lint",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
-    "devnet": "pnpm --filter paylink-solana run setup",
-    "pay": "pnpm --filter paylink-solana pay"
+    "smoke:sandbox": "pnpm --filter paylink-paypal smoke:sandbox"
   },
   "devDependencies": {
     "turbo": "^2.5.8",
