@@ -12,7 +12,7 @@ const tabs = [
   { href: "/inbox", label: "Inbox", match: (path: string) => path.startsWith("/inbox") },
 ];
 
-export function Shell({ children, merchantName = "Amaka Studio" }: { children: React.ReactNode; merchantName?: string }) {
+export function Shell({ children, merchantName = PRODUCT_NAME }: { children: React.ReactNode; merchantName?: string }) {
   const pathname = usePathname();
   const initials = merchantName
     .split(/\s+/)

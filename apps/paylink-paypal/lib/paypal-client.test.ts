@@ -10,8 +10,8 @@ const draft = {
   invoiceDate: "2026-11-05",
   clientName: "Ada Lovelace",
   clientEmail: "ada@example.com",
-  merchantName: "Amaka Studio",
-  merchantEmail: "amaka@amaka.studio",
+  merchantName: "Fictional Studio",
+  merchantEmail: "merchant@example.com",
   payUrl: "http://localhost:3030/pay/inv_test",
 };
 

@@ -2,7 +2,7 @@
   "name": "paylink-paypal",
   "version": "0.1.0",
   "private": true,
-  "description": "PayLink for PayPal: an invoicing and collections agent that creates, sends, and chases PayPal invoices.",
+  "description": "Nudgeboard: a PayPal invoicing and collections agent with reviewable proposals and explicit action confirmation.",
   "license": "MIT",
   "scripts": {
     "dev": "next dev -p 3030 -H 0.0.0.0",

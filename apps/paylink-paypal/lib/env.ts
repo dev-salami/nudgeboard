@@ -52,9 +52,9 @@ export function demoMode(): boolean {
 
 export function merchantProfile() {
   return {
-    name: env("MERCHANT_NAME", "Amaka Studio"),
+    name: env("MERCHANT_NAME", PRODUCT_NAME),
     city: env("MERCHANT_CITY", "Lagos"),
-    email: env("PAYPAL_MERCHANT_EMAIL") || env("MERCHANT_EMAIL", "amaka@amaka.studio"),
+    email: env("PAYPAL_MERCHANT_EMAIL") || env("MERCHANT_EMAIL", "merchant@example.com"),
   };
 }
 
@@ -62,3 +62,4 @@ export function dataDir(): string {
   return env("DATA_DIR") || "";
 }
 import { inJudgeDemo } from "./judge-demo-context";
+import { PRODUCT_NAME } from "./brand";

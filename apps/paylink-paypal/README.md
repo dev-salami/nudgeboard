@@ -1,4 +1,4 @@
-# PayLink PayPal
+# Nudgeboard
 
 ## 60-second judge path
 
@@ -16,7 +16,7 @@ AI invoicing and collections agent for freelancers. It reads a job request and s
 
 This is the PayPal entry in the private `181hacks` monorepo. It is aimed at Best Agentic Commerce and Best PayPal + AI. PayPal is the rail for invoice creation, sending, reminding, cancellation, recorded external payments/refunds, status reads and webhook verification. `packages/paylink-core` is shared with a Solana sibling; this app is the **PayPal slice**. PayPal-specific types and changes stay in this app.
 
-The PayPal AI Hackathon opened on 1 October 2026. The shared invoicing core in `packages/paylink-core` was written in this repo during that window for the Solana PayLink entry: invoice domain, agent tool names, date parsing, money, and the reminder guard. This app is the PayPal slice of that work. It implements `PaymentProvider` inside the app, adds the sandbox client, the collections chat, the inbox adapters, and the payer flow. PayPal-specific types stay here. They are not added to `paylink-core`.
+The PayPal AI Hackathon opened on 1 October 2026. The shared invoicing core in `packages/paylink-core` was written in this repo during that window for the Solana sibling product named PayLink: invoice domain, agent tool names, date parsing, money, and the reminder guard. This app is **Nudgeboard**, the PayPal slice, not a resubmission under the sibling's product name. It implements `PaymentProvider` inside the app, adds the sandbox client, the collections queue, the inbox adapters, and the payer flow. PayPal-specific types stay here. They are not added to `paylink-core`.
 
 A self-contained public submission repo will be extracted from this app and `packages/paylink-core` later. Do not create that repository from this tree. This monorepo stays private. No Devpost registration and no PayPal developer account are part of this change.
 
@@ -60,11 +60,13 @@ Keel styling remains mint `#71FC8F`, near-black `#181C25`, and self-hosted **Ins
 
 ## Judge sandbox buyer login
 
-Payment takes place on **https://www.sandbox.paypal.com**, not inside this app. A separate personal/business sandbox buyer login will be provided in the submission form **after operator approval**. This change did not create a buyer account or verify that a judge login already exists. The public REST APIs listed above cannot create sandbox buyer accounts.
+Payment is completed on PayPal's sandbox, at https://www.sandbox.paypal.com, not inside this app.
 
-**Operator placeholder:** `[sandbox buyer login and password to be supplied privately in the submission form after approval — not configured here]`.
+Sandbox buyer: &lt;to be added&gt;
 
-Do not commit credentials or use a real PayPal account. No login is needed to inspect the labelled Judge demo queue; actual sandbox checkout needs the approved sandbox buyer account.
+This will be a dedicated PayPal **sandbox** personal/buyer account for judges. It is not a live PayPal login, not this app's merchant REST credentials, and not a client secret. The account is not committed here and will be supplied only in the submission form after operator approval. This change did not create a buyer account; the public REST APIs listed above cannot create sandbox buyer accounts.
+
+No login is required to inspect the labelled Judge demo queue.
 
 ## Read-only invoice for a buyer's agent
 
@@ -88,7 +90,7 @@ Demo mode is the default. Leave `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` em
 Try this in the agent:
 
 ```text
-Invoice Ada Lovelace ada@example.com 480 USD for the spring logo, due Friday
+Invoice Northwind accounts@northwind.example 480 USD for the spring logo, due Friday
 ```
 
 Review the structured preview, then click **Confirm invoice send** separately. Only then open the pay link, choose PayPal or card, and complete the demo payment. Inbox on `/inbox` accepts email-style and WhatsApp-style pastes as local drafts only, using the deterministic parser even when a model key exists. These are paste adapters, not mailbox or WhatsApp connections.
@@ -96,10 +98,10 @@ Review the structured preview, then click **Confirm invoice send** separately. O
 AI examples:
 
 ```text
-Invoice Ada Lovelace ada@example.com 480 USD for the spring logo, due Friday
-Draft a friendly overdue reminder for Ada Lovelace
+Invoice Northwind accounts@northwind.example 480 USD for the spring logo, due Friday
+Draft a friendly overdue reminder for Northwind
 Draft a firm reminder for PP-2026-1041
-Draft an empathetic reminder for Ada Lovelace
+Draft an empathetic reminder for Northwind
 Summarize receivables
 ```
 
@@ -212,7 +214,7 @@ Replace example addresses only with your developer sandbox accounts. Sending is 
 
 ## What the loop does
 
-1. The merchant talks to the agent, or pastes a request. The same tool names as PayLink core are used: `create_invoice`, `check_status`, `list_unpaid`, `send_reminder`.
+1. The merchant talks to the agent, or pastes a request. The shared invoicing core's tool names are used: `create_invoice`, `check_status`, `list_unpaid`, `send_reminder`.
 2. The app saves a local draft and structured preview. Only a separate explicit confirmation permits remote draft creation (`POST /v2/invoicing/invoices`) and send (`POST /v2/invoicing/invoices/{id}/send`).
 3. The payer opens `/pay/{id}`: summary, payment method, then pay. Demo mode records a simulated capture. Sandbox mode opens the hosted PayPal invoice.
 4. A paid webhook, a remote poll/manual sync, or the demo capture marks the invoice paid and writes a receipt at `/receipts/{id}`. Dashboard polling checks at most five due rows per request, with a 15-second per-invoice cooldown; payer polling checks every 15 seconds. Polling is browser-driven, not a background scheduler.
@@ -223,6 +225,8 @@ The core `CreatePaymentInput.currency` field is typed `"USDC"` because that was 
 ## What's new since 1 October 2026
 
 These dates and subjects are from `git log --since=2026-10-01 --date=short --format='%h %ad %s' -- apps/paylink-paypal` on this branch. `packages/paylink-core` is shared with the Solana sibling; this is the PayPal app's history, not a claim that the shared core was rewritten here.
+
+Historical commit subjects below predate the Nudgeboard name and are preserved verbatim.
 
 | Date | Commit | PayPal-app subject |
 | --- | --- | --- |
