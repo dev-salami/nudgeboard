@@ -7,6 +7,7 @@
 3. In **View judge demo**, select/deselect proposals and click **Approve selected**. This only prepares previews. Read each exact message or cancellation note; then **Confirm and send N actions** separately to exercise simulated actions. Per-item results remain visible. In sandbox books, do not confirm outgoing actions without operator approval.
 4. Chat remains secondary at `/chat`. Typing **“yes”**, **“confirm”** or **“send it”** is refused as authorization. Chat cannot bulk-send reminders.
 5. Optional: paste a fictional email/WhatsApp request into `/inbox`. It creates a **local draft only**, not a mailbox connection or an outgoing invoice.
+6. Optional, sandbox payment only: to pay a real sandbox invoice as the judge buyer, use the **Judge sandbox buyer login** section below. That login is SANDBOX ONLY (no real money) and is not needed for the demo queue.
 
 The ungated **View judge demo / View sandbox books** control separates the datasets. Judge fixtures and confirmations are in-memory and reset on process restart; they never become sandbox payment evidence. These upgrades are live at https://paypal.181labs.build.
 
@@ -60,14 +61,25 @@ Keel styling remains mint `#71FC8F`, near-black `#181C25`, and self-hosted **Ins
 
 ## Judge sandbox buyer login
 
-Payment is completed on PayPal's sandbox, at https://www.sandbox.paypal.com, not inside this app.
+Payment is completed on PayPal's sandbox, at https://www.sandbox.paypal.com, not inside this app. This login is **SANDBOX ONLY** — it cannot move real money.
 
-Sandbox buyer: &lt;to be added&gt;
+**Sandbox buyer** (dedicated PayPal **sandbox** personal/buyer account):
 
-This will be a dedicated PayPal **sandbox** personal/buyer account for judges. It is not a live PayPal login, not this app's merchant REST credentials, and not a client secret. The account is not committed here and will be supplied only in the submission form after operator approval. This change did not create a buyer account; the public REST APIs listed above cannot create sandbox buyer accounts.
+- Email: `nudgeboard.judge@personal.example.com`
+- Password: `Nudgee7393a1e!Jd`
+
+This is not a live PayPal login, not this app's merchant REST credentials, and not a client secret. Leave all other secrets out of git.
+
+### How to pay a sandbox invoice
+
+These steps are only for a real sandbox invoice in **View sandbox books**. They are not required to inspect the labelled Judge demo queue, and Judge demo actions do not charge this buyer.
+
+1. Open a **sent** sandbox invoice and follow its payer page (https://paypal.181labs.build/pay/…, or local http://localhost:3030/pay/…) until it sends you to the hosted PayPal invoice.
+2. On https://www.sandbox.paypal.com, sign in with the sandbox buyer email and password above. Do not use a live PayPal account or the merchant business login.
+3. Complete the sandbox checkout for the invoice amount. A return to this app or an “I've paid” click is not itself proof of payment.
+4. The app marks the invoice paid only after a verified PayPal webhook or a status GET that includes both a PayPal transaction id and a paid amount. The receipt will show the webhook event id when the paid update arrived by webhook.
 
 No login is required to inspect the labelled Judge demo queue.
-
 ## Read-only invoice for a buyer's agent
 
 `GET /api/invoices/{localInvoiceId}/agent` returns JSON with `profile: "paypal-invoice"`, `version: 1`, invoice `number`, `amount`, `currency`, `dueDate`, local `status`, `paypalStatus`, `remainingBalance`, `source`, and `payment: { payPath, hostedPaypalUrl?, execution }`. It is linked from invoice and payer pages. `?books=demo` reads only the labelled, isolated Judge demo dataset.

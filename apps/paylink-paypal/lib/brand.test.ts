@@ -55,11 +55,16 @@ describe("Nudgeboard display branding", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("keeps an empty, sandbox-only buyer placeholder after the leading judge path", () => {
+  it("documents the dedicated sandbox buyer login after the leading judge path", () => {
     const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
     expect(readme.startsWith(`# ${PRODUCT_NAME}\n\n## 60-second judge path`)).toBe(true);
-    expect(readme).toContain("Sandbox buyer: &lt;to be added&gt;");
+    expect(readme).toContain("nudgeboard.judge@personal.example.com");
+    expect(readme).toContain("SANDBOX ONLY");
+    expect(readme).toContain("not a client secret");
     expect(readme).toContain("not this app's merchant REST credentials");
+    expect(readme).toMatch(/Password: `[^`]+`/);
+    expect(readme).not.toContain("&lt;to be added&gt;");
     expect(readme).toContain("No login is required to inspect the labelled Judge demo queue.");
+    expect(readme).toContain("How to pay a sandbox invoice");
   });
 });
